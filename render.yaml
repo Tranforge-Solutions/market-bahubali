@@ -39,39 +39,3 @@ services:
         sync: false
 
 
-  # 3. Market Scanner Cron Jobs (runs on schedule)
-  - type: cron
-    name: market-scanner-morning
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: python -m src.main
-    schedule: "0 5 * * 1-5"   # 10:30 IST = 05:00 UTC, Mon-Fri
-    envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: TELEGRAM_CHAT_ID
-        sync: false
-      - key: TELEGRAM_BUY_CHANNEL_ID
-        sync: false
-      - key: TELEGRAM_SELL_CHANNEL_ID
-        sync: false
-
-  - type: cron
-    name: market-scanner-afternoon
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: python -m src.main
-    schedule: "15 9 * * 1-5"  # 14:45 IST = 09:15 UTC, Mon-Fri
-    envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: TELEGRAM_CHAT_ID
-        sync: false
-      - key: TELEGRAM_BUY_CHANNEL_ID
-        sync: false
-      - key: TELEGRAM_SELL_CHANNEL_ID
-        sync: false

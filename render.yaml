@@ -46,7 +46,6 @@ services:
     dockerfilePath: ./Dockerfile
     dockerCommand: python -m src.main
     schedule: "0 5 * * 1-5"   # 10:30 IST = 05:00 UTC, Mon-Fri
-    plan: free
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -65,7 +64,6 @@ services:
     dockerfilePath: ./Dockerfile
     dockerCommand: python -m src.main
     schedule: "15 9 * * 1-5"  # 14:45 IST = 09:15 UTC, Mon-Fri
-    plan: free
     envVars:
       - key: DATABASE_URL
         sync: false

@@ -73,15 +73,15 @@ def get_db_session():
 def read_root():
     return {"status": "online", "system": "Market Monitor"}
 
-    @app.post("/run-job")
-    def run_job():
-        """Trigger the market scan job manually or via webhook."""
-        try:
-            from src.main import run_scan
-            run_scan()
-            return {"status": "success", "message": "Market scan triggered."}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+@app.post("/run-job")
+def run_job():
+    """Trigger the market scan job manually or via webhook."""
+    try:
+        from src.main import run_scan
+        run_scan()
+        return {"status": "success", "message": "Market scan triggered."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.get("/symbols", response_model=List[SymbolOut])
 def get_symbols(db: Session = Depends(get_db_session)):

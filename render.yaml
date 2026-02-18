@@ -38,7 +38,7 @@ services:
       - key: TELEGRAM_SELL_CHANNEL_ID
         sync: false
 
-jobs:
+schedules:
 
   - name: market-scanner-morning
     runtime: docker

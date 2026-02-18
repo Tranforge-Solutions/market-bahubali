@@ -19,23 +19,5 @@ services:
         sync: false
     healthCheckPath: /
 
-  # 2. Telegram Bot Worker
-  - type: worker
-    name: market-monitor-bot
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: python -m src.bot
-    plan: free
-    envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: TELEGRAM_CHAT_ID
-        sync: false
-      - key: TELEGRAM_BUY_CHANNEL_ID
-        sync: false
-      - key: TELEGRAM_SELL_CHANNEL_ID
-        sync: false
 
 

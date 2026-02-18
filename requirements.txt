@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+requests
+python-dotenv
+psycopg2-binary
+sqlalchemy
+yfinance
+pandas
+numpy
+beautifulsoup4
+schedule
+matplotlib

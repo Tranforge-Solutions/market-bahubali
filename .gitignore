@@ -1,0 +1,49 @@
+# Environment variables - NEVER commit these
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# AWS Lambda layer build (large, not needed for Railway)
+layer_build/
+
+# Build artifacts
+*.zip
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Database files (use Supabase in production)
+*.db
+*.sqlite3
+
+# Logs
+*.log
+install_log.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/

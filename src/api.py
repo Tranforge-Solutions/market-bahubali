@@ -1,6 +1,3 @@
-@app.post("/test-job")
-def test_job():
-    return {"status": "success", "message": "Test job triggered."}
 from fastapi import FastAPI, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -82,6 +79,10 @@ def run_job():
         return {"status": "success", "message": "Market scan triggered."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.post("/test-job")
+def test_job():
+    return {"status": "success", "message": "Test job triggered."}
 
 @app.get("/symbols", response_model=List[SymbolOut])
 def get_symbols(db: Session = Depends(get_db_session)):

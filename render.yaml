@@ -38,8 +38,7 @@ services:
       - key: TELEGRAM_SELL_CHANNEL_ID
         sync: false
 
-# 3. Market Scanner Cron Jobs (runs on schedule)
-cronJobs:
+jobs:
 
   - name: market-scanner-morning
     runtime: docker

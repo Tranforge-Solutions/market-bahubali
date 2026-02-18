@@ -91,17 +91,22 @@ def run_scan():
                 
                 logger.info(f"Analysis for {symbol.ticker}: Score={result['score']} ({result['confidence']})")
                 
-                # 4. Save Signal
+                # 4. Save Signal - Convert numpy types to Python native types
                 signal = TradeSignal(
                     symbol_id=symbol.id,
-                    rsi=latest_row['RSI'],
-                    atr=latest_row['ATR'],
+                    rsi=float(latest_row['RSI']),
+                    atr=float(latest_row['ATR']),
                     score=result['score'],
                     confidence=result['confidence'],
                     direction=result['direction']
                 )
-                db.add(signal)
-                db.commit()
+                try:
+                    db.add(signal)
+                    db.commit()
+                except Exception as db_error:
+                    logger.error(f"Database error for {symbol.ticker}: {db_error}")
+                    db.rollback()
+                    continue
                 
                 # 5. Alert
                 if result['confidence'] in ["High", "Medium", "Low"]:

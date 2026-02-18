@@ -6,11 +6,19 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import os
 import logging
+from datetime import datetime
 
 from src.database.db import db_instance
 from src.models.models import Symbol, TradeSignal, Order
 
 logger = logging.getLogger(__name__)
+
+# Simple job status tracking
+job_status = {
+    "last_run": None,
+    "status": "idle",
+    "message": "No jobs run yet"
+}
 
 # Define Pydantic Models for Response
 class SymbolOut(BaseModel):
@@ -74,20 +82,52 @@ def read_root():
 def run_job(background_tasks: BackgroundTasks):
     """Trigger the market scan job manually or via webhook."""
     def run_scan_task():
+        global job_status
         try:
+            job_status["status"] = "running"
+            job_status["message"] = "Market scan in progress..."
+            job_status["last_run"] = datetime.now()
+            
             from src.main import run_scan
             logger.info("Starting background market scan...")
             run_scan()
             logger.info("Background market scan completed.")
+            
+            job_status["status"] = "completed"
+            job_status["message"] = "Market scan completed successfully"
         except Exception as e:
             logger.error(f"Background scan failed: {e}")
+            job_status["status"] = "failed"
+            job_status["message"] = f"Market scan failed: {str(e)}"
     
     background_tasks.add_task(run_scan_task)
     return {"status": "success", "message": "Market scan triggered and running in background."}
 
+@app.get("/job-status")
+def get_job_status():
+    """Get the status of the last background job."""
+    return job_status
+
 @app.post("/test-job")
 def test_job():
     return {"status": "success", "message": "Test job triggered."}
+
+@app.get("/health")
+def health_check():
+    """Check if the API and database are working."""
+    try:
+        db = db_instance.SessionLocal()
+        symbol_count = db.query(Symbol).count()
+        signal_count = db.query(TradeSignal).count()
+        db.close()
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "symbols": symbol_count,
+            "signals": signal_count
+        }
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
 
 @app.get("/symbols", response_model=List[SymbolOut])
 def get_symbols(db: Session = Depends(get_db_session)):

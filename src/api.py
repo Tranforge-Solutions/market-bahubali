@@ -1,3 +1,6 @@
+@app.post("/test-job")
+def test_job():
+    return {"status": "success", "message": "Test job triggered."}
 from fastapi import FastAPI, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional

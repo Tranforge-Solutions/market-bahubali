@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from src.main import run_scan
 from datetime import datetime
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -69,6 +70,14 @@ def get_db_session():
 @app.get("/")
 def read_root():
     return {"status": "online", "system": "Market Monitor"}
+    @app.post("/run-job")
+    def run_job():
+        """Trigger the market scan job manually or via webhook."""
+        try:
+            run_scan()
+            return {"status": "success", "message": "Market scan triggered."}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
 @app.get("/symbols", response_model=List[SymbolOut])
 def get_symbols(db: Session = Depends(get_db_session)):

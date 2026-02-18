@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi import FastAPI, HTTPException, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -71,14 +71,19 @@ def read_root():
     return {"status": "online", "system": "Market Monitor"}
 
 @app.post("/run-job")
-def run_job():
+def run_job(background_tasks: BackgroundTasks):
     """Trigger the market scan job manually or via webhook."""
-    try:
-        from src.main import run_scan
-        run_scan()
-        return {"status": "success", "message": "Market scan triggered."}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    def run_scan_task():
+        try:
+            from src.main import run_scan
+            logger.info("Starting background market scan...")
+            run_scan()
+            logger.info("Background market scan completed.")
+        except Exception as e:
+            logger.error(f"Background scan failed: {e}")
+    
+    background_tasks.add_task(run_scan_task)
+    return {"status": "success", "message": "Market scan triggered and running in background."}
 
 @app.post("/test-job")
 def test_job():

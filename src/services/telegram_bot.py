@@ -370,6 +370,7 @@ class TelegramBotHandler:
         application.add_handler(CallbackQueryHandler(self.handle_quick_buy, pattern="^QUICK_BUY:"))
         application.add_handler(CallbackQueryHandler(self.handle_custom_order, pattern="^CUSTOM:"))
         application.add_handler(CallbackQueryHandler(self.handle_target_selection, pattern="^TARGET:"))
+        application.add_handler(CallbackQueryHandler(self.handle_sell_callback, pattern="^SELL:"))
     
     async def my_trades_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show user's open trades"""

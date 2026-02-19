@@ -19,6 +19,7 @@ from src.database.db import db_instance
 from src.models.models import Subscriber, PaperTrade, Symbol, TradeSignal
 from src.services.portfolio import PortfolioService
 from src.services.alerting import AlertService
+from src.services.stock_screener import StockScreener
 import os
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,24 @@ async def get_signals(limit: int = 50, db: Session = Depends(get_db)):
             "timestamp": s.generated_at
         })
     return result
+
+@app.get("/screen-stocks", summary="Screen Large-Cap Stocks", description="Screen Indian large-cap stocks based on Claude prompt criteria")
+async def screen_large_cap_stocks(min_market_cap: float = None, db: Session = Depends(get_db)):
+    """Screen Indian large-cap stocks based on Claude prompt criteria"""
+    try:
+        if min_market_cap is None:
+            min_market_cap = float(os.getenv('MIN_MARKET_CAP_CR', '100000'))
+        screener = StockScreener(db)
+        results = screener.screen_large_cap_stocks(min_market_cap)
+        return {
+            "status": "success",
+            "count": len(results),
+            "stocks": results,
+            "formatted_message": screener.format_screening_results(results)
+        }
+    except Exception as e:
+        logger.error(f"Stock screening error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # JWT Configuration
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")

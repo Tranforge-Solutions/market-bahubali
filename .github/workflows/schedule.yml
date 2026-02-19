@@ -4,8 +4,8 @@ on:
   schedule:
     # 10:30 AM IST (05:00 UTC) Mon-Fri
     - cron: '0 5 * * 1-5'
-    # 2:45 PM IST (09:15 UTC) Mon-Fri
-    - cron: '15 9 * * 1-5'
+    # 2:45 PM IST (08:15 UTC) Mon-Fri
+    - cron: '15 8 * * 1-5'
   workflow_dispatch:
 
 jobs:

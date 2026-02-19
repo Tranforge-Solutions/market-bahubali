@@ -19,6 +19,8 @@ services:
         sync: false
       - key: TELEGRAM_BOT_USERNAME
         value: Market_bahubali_bot
+      - key: JWT_SECRET_KEY
+        sync: false
       - key: RSI_OVERSOLD_THRESHOLD
         value: 30
       - key: RSI_OVERBOUGHT_THRESHOLD

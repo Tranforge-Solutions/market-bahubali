@@ -53,14 +53,16 @@ This module enables simulated trade execution via Telegram **channels**, allowin
    TELEGRAM_BOT_USERNAME=your_bot_username
 ```
 
-### 2. Configure Channels
+### 2. Configure Channels (Use Existing)
 ```
-1. Create BUY and SELL channels
-2. Add bot as admin to both channels
-3. Get channel IDs (use @userinfobot)
-4. Add to .env:
-   TELEGRAM_BUY_CHANNEL_ID=-1001234567890
-   TELEGRAM_SELL_CHANNEL_ID=-1001234567891
+You already have channels configured:
+- TELEGRAM_BUY_CHANNEL_ID=-1003768414047
+- TELEGRAM_SELL_CHANNEL_ID=-1003553292633
+
+Just add your bot:
+1. Add bot as admin to both existing channels
+2. Bot will post signals with BUY buttons there
+3. Users click BUY → opens private chat with bot
 ```
 
 ## Features

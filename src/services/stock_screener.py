@@ -7,7 +7,7 @@ import logging
 from typing import List, Dict, Any
 import pandas as pd
 from sqlalchemy.orm import Session
-from src.models.database import Symbol, TradeSignal
+from src.models.models import Symbol, TradeSignal
 from src.services.market_data import MarketDataService
 from src.services.indicators import IndicatorService
 

@@ -57,7 +57,7 @@ def save_order(ticker, action, price, qty):
              db.add(symbol)
              db.commit()
              db.refresh(symbol)
-             
+
         order = Order(symbol_id=symbol.id, action=action, price=price, quantity=qty, status="EXECUTED")
         db.add(order)
         db.commit()
@@ -73,23 +73,23 @@ def handle_callback(update):
     user_id = query['from']['id']
     data = query['data']
     chat_id = query['message']['chat']['id']
-    
+
     # Acknowledge callback (stop spinner)
     requests.post(f"{BASE_URL}answerCallbackQuery", data={"callback_query_id": query['id']})
-    
+
     if data.startswith("BUY:"):
         # Format: BUY:RELIANCE.NS:1456.80
         parts = data.split(":")
         ticker = parts[1]
         price = float(parts[2])
-        
+
         user_state[user_id] = {
             "step": "WAITING_QTY",
             "ticker": ticker,
             "action": "BUY",
             "price": price
         }
-        
+
         send_message(chat_id, f"⚡ Initiating BUY for {ticker} @ ₹{price}\n\n🔢 Please enter the QUANTITY:")
 
 def handle_message(update):
@@ -100,7 +100,7 @@ def handle_message(update):
     user_id = msg['from']['id']
     chat_id = str(msg['chat']['id'])
     text = msg.get('text', '')
-    
+
     if text == '/start':
         try:
             db = db_instance.SessionLocal()
@@ -117,7 +117,7 @@ def handle_message(update):
                     welcome_msg = "Welcome Back! 🔄\nYou are re-subscribed."
                 else:
                     welcome_msg = "You are already subscribed! ✅"
-            
+
             db.close()
             send_telegram_message(chat_id, welcome_msg)
         except Exception as e:
@@ -127,17 +127,17 @@ def handle_message(update):
 
     # Handle numeric input for Order Quantity
     state = user_state.get(user_id)
-    
+
     if state and state['step'] == "WAITING_QTY":
         try:
             qty = int(text)
             if qty <= 0:
                 send_message(chat_id, "❌ Quantity must be positive. Try again:")
                 return
-                
+
             # Execute Order
             success, order_id = save_order(state['ticker'], state['action'], state['price'], qty)
-            
+
             if success:
                 send_message(chat_id, f"✅ <b>Order Placed Successfully!</b>\n"
                                       f"🆔 ID: #{order_id}\n"
@@ -146,10 +146,10 @@ def handle_message(update):
                                       f"💰 Value: ₹{qty * state['price']:.2f}")
             else:
                 send_message(chat_id, "❌ Failed to save order. Database error.")
-            
+
             # Clear state
             del user_state[user_id]
-            
+
         except ValueError:
             send_message(chat_id, "❌ Invalid quantity. Please enter a valid number (e.g., 10, 50).")
     else:
@@ -159,21 +159,21 @@ def handle_message(update):
 def main():
     logger.info("Bot started. Listening for updates...")
     print("Bot is running...")
-    
+
     last_update_id = None
-    
+
     while True:
         updates = get_updates(last_update_id)
-        
+
         if updates and updates.get('ok'):
             for update in updates['result']:
                 last_update_id = update['update_id'] + 1
-                
+
                 if 'callback_query' in update:
                     handle_callback(update)
                 elif 'message' in update:
                     handle_message(update)
-        
+
         time.sleep(1)
 
 if __name__ == "__main__":

@@ -104,10 +104,10 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     """Send OTP to user's telegram"""
     # Find subscriber by mobile (assuming mobile is stored in chat_id for now)
     subscriber = db.query(Subscriber).filter(Subscriber.chat_id.contains(request.mobile)).first()
-    
+
     if not subscriber:
         raise HTTPException(status_code=404, detail="User not found. Please start the telegram bot first.")
-    
+
     # Generate and store OTP
     otp = generate_otp()
     otp_storage[request.mobile] = {
@@ -115,35 +115,35 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         "chat_id": subscriber.chat_id,
         "expires": datetime.utcnow() + timedelta(minutes=5)
     }
-    
+
     # Send OTP via telegram
     alert_service = AlertService()
     msg = f"🔐 <b>Login OTP</b>\n\nYour OTP: <code>{otp}</code>\n\nValid for 5 minutes."
     alert_service.send_telegram_message(msg, specific_chat_id=subscriber.chat_id)
-    
+
     return {"message": "OTP sent to your telegram"}
 
 @app.post("/auth/verify-otp", summary="Verify OTP and get JWT token", description="Verify the OTP received on telegram and get JWT access token")
 async def verify_otp(request: VerifyOTPRequest):
     """Verify OTP and return JWT token"""
     stored_data = otp_storage.get(request.mobile)
-    
+
     if not stored_data:
         raise HTTPException(status_code=400, detail="OTP not found or expired")
-    
+
     if datetime.utcnow() > stored_data["expires"]:
         del otp_storage[request.mobile]
         raise HTTPException(status_code=400, detail="OTP expired")
-    
+
     if stored_data["otp"] != request.otp:
         raise HTTPException(status_code=400, detail="Invalid OTP")
-    
+
     # Generate JWT token
     access_token = create_access_token(data={"sub": stored_data["chat_id"]})
-    
+
     # Clean up OTP
     del otp_storage[request.mobile]
-    
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/portfolio", response_model=PortfolioResponse, summary="Get Portfolio Summary", description="Get complete portfolio performance summary for authenticated user")
@@ -151,10 +151,10 @@ async def get_portfolio(chat_id: str = Depends(verify_token), db: Session = Depe
     """Get user portfolio summary"""
     portfolio_service = PortfolioService(db)
     portfolio = portfolio_service.get_user_portfolio(chat_id)
-    
+
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
-    
+
     return PortfolioResponse(
         total_pnl=portfolio["total_pnl"],
         total_trades=portfolio["total_trades"],
@@ -178,9 +178,9 @@ async def get_trades(
     subscriber = db.query(Subscriber).filter(Subscriber.chat_id == chat_id).first()
     if not subscriber:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     query = db.query(PaperTrade).filter(PaperTrade.subscriber_id == subscriber.id)
-    
+
     # Apply filters
     if status:
         query = query.filter(PaperTrade.status == status.upper())
@@ -192,9 +192,9 @@ async def get_trades(
         query = query.filter(PaperTrade.entry_time >= date_from)
     if date_to:
         query = query.filter(PaperTrade.entry_time <= date_to)
-    
+
     trades = query.order_by(PaperTrade.entry_time.desc()).all()
-    
+
     result = []
     for trade in trades:
         symbol_obj = db.query(Symbol).filter(Symbol.id == trade.symbol_id).first()
@@ -212,7 +212,7 @@ async def get_trades(
             exit_time=trade.exit_time,
             exit_reason=trade.exit_reason
         ))
-    
+
     return result
 
 @app.get("/leaderboard", summary="Get Leaderboard", description="Get top 10 performers leaderboard (privacy-masked)")
@@ -220,7 +220,7 @@ async def get_leaderboard(db: Session = Depends(get_db)):
     """Get top performers leaderboard"""
     portfolio_service = PortfolioService(db)
     leaders = portfolio_service.get_leaderboard(10)
-    
+
     result = []
     for i, leader in enumerate(leaders, 1):
         win_rate = (leader.wins / leader.trade_count * 100) if leader.trade_count > 0 else 0
@@ -232,7 +232,7 @@ async def get_leaderboard(db: Session = Depends(get_db)):
             "wins": leader.wins,
             "win_rate": round(win_rate, 1)
         })
-    
+
     return result
 
 @app.post("/trades/{trade_id}/sell", summary="Manual Sell Trade", description="Manually close an open trade at current market price")
@@ -245,28 +245,28 @@ async def manual_sell(
     subscriber = db.query(Subscriber).filter(Subscriber.chat_id == chat_id).first()
     if not subscriber:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     trade = db.query(PaperTrade).filter(
         PaperTrade.id == trade_id,
         PaperTrade.subscriber_id == subscriber.id,
         PaperTrade.status == "OPEN"
     ).first()
-    
+
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found or already closed")
-    
+
     # Get current price and close trade
     from src.services.auto_sell import AutoSellService
     auto_sell_service = AutoSellService()
     symbol = db.query(Symbol).filter(Symbol.id == trade.symbol_id).first()
     current_price = auto_sell_service.get_current_price(symbol.ticker)
-    
+
     if not current_price:
         raise HTTPException(status_code=400, detail="Unable to fetch current price")
-    
+
     # Execute manual sell
     auto_sell_service.execute_auto_sell(db, trade, symbol, current_price, "MANUAL")
-    
+
     return {"message": "Trade sold successfully", "exit_price": current_price}
 
 if __name__ == "__main__":

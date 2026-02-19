@@ -5,7 +5,7 @@ from src.config.settings import Config
 class ScoringService:
     """
     Implements a weighted rule-based scoring engine for trade setups.
-    
+
     Strategy: 'Dip Buying in Uptrend'
     - Primary Driver: RSI Oversold (Mean Reversion)
     - Filter: SMA Trend Alignment (Trade with the trend)
@@ -35,14 +35,14 @@ class ScoringService:
         short_score = 0
         long_reasons = []
         short_reasons = []
-        
+
         rsi = row.get('RSI', 50)
         ha_green = row.get('HA_Green', None) # True if Green, False if Red
         vol_z = row.get('Vol_Z', 0)
         close = row['close']
         sma200 = row.get('SMA_200', 0)
         current_volume = row.get('volume', 0)
-        
+
         # Calculate volume average if df is provided
         volume_above_avg = False
         if df is not None and len(df) >= Config.VOLUME_AVERAGE_PERIOD:
@@ -51,51 +51,51 @@ class ScoringService:
                 avg_volume = df['volume'].iloc[current_idx - Config.VOLUME_AVERAGE_PERIOD:current_idx].mean()
                 if avg_volume > 0:
                     volume_above_avg = current_volume > (Config.VOLUME_MULTIPLIER * avg_volume)
-        
+
         # Use dual window approach
         if df is not None and len(df) >= Config.PRIMARY_WINDOW_CANDLES:
             # Get primary window (last 70 candles) and confirmation window (last 30 candles)
             current_idx = df.index.get_loc(row.name)
-            
+
             # Primary window for trend analysis
             primary_start = max(0, current_idx - Config.PRIMARY_WINDOW_CANDLES + 1)
             primary_df = df.iloc[primary_start:current_idx + 1]
-            
+
             # Confirmation window for recent momentum
             confirmation_start = max(0, current_idx - Config.CONFIRMATION_WINDOW_CANDLES + 1)
             confirmation_df = df.iloc[confirmation_start:current_idx + 1]
-        
+
         # Check RSI rising/falling trend using confirmation window
         rsi_rising = False
         rsi_falling = False
-        
+
         # Check HA consecutive candles using confirmation window
         ha_bullish_confirmed = False
         ha_bearish_confirmed = False
-        
+
         if df is not None and len(df) >= Config.PRIMARY_WINDOW_CANDLES:
             # Get primary window (last 70 candles) and confirmation window (last 30 candles)
             current_idx = df.index.get_loc(row.name)
-            
+
             # Primary window for trend analysis
             primary_start = max(0, current_idx - Config.PRIMARY_WINDOW_CANDLES + 1)
             primary_df = df.iloc[primary_start:current_idx + 1]
-            
+
             # Confirmation window for recent momentum
             confirmation_start = max(0, current_idx - Config.CONFIRMATION_WINDOW_CANDLES + 1)
             confirmation_df = df.iloc[confirmation_start:current_idx + 1]
-            
+
             # Check RSI trend in confirmation window
             if len(confirmation_df) >= Config.RSI_RISING_CANDLES:
                 rsi_values = confirmation_df['RSI'].tail(Config.RSI_RISING_CANDLES + 1).values
                 rsi_rising = all(rsi_values[i] < rsi_values[i+1] for i in range(len(rsi_values)-1))
                 rsi_falling = all(rsi_values[i] > rsi_values[i+1] for i in range(len(rsi_values)-1))
-            
+
             # Check HA consecutive candles in confirmation window
             if len(confirmation_df) >= Config.HA_CONSECUTIVE_CANDLES:
                 ha_green_values = confirmation_df['HA_Green'].tail(Config.HA_CONSECUTIVE_CANDLES).values
                 ha_close_values = confirmation_df['HA_Close'].tail(Config.HA_CONSECUTIVE_CANDLES).values
-                
+
                 if len(ha_green_values) == Config.HA_CONSECUTIVE_CANDLES:
                     ha_bullish_confirmed = all(ha_green_values) and ha_close_values[-1] > ha_close_values[-2]
                     ha_bearish_confirmed = all(~ha_green_values) and ha_close_values[-1] < ha_close_values[-2]
@@ -103,32 +103,32 @@ class ScoringService:
             # Fallback to old logic if not enough data
             if df is not None and len(df) >= max(Config.RSI_RISING_CANDLES, Config.HA_CONSECUTIVE_CANDLES):
                 current_idx = df.index.get_loc(row.name)
-            
+
             # Fallback to old logic if not enough data
             if df is not None and len(df) >= max(Config.RSI_RISING_CANDLES, Config.HA_CONSECUTIVE_CANDLES):
                 current_idx = df.index.get_loc(row.name)
-                
+
                 # Check if we have enough previous candles
                 if current_idx >= Config.RSI_RISING_CANDLES:
                     # Get RSI values for last N candles including current
                     rsi_values = df['RSI'].iloc[current_idx - Config.RSI_RISING_CANDLES:current_idx + 1].values
-                    
+
                     # Check if RSI is consistently rising
                     rsi_rising = all(rsi_values[i] < rsi_values[i+1] for i in range(len(rsi_values)-1))
-                    
+
                     # Check if RSI is consistently falling
                     rsi_falling = all(rsi_values[i] > rsi_values[i+1] for i in range(len(rsi_values)-1))
-                
+
                 # Check HA consecutive candles
                 if current_idx >= Config.HA_CONSECUTIVE_CANDLES:
                     # Get last N HA candles including current
                     ha_green_values = df['HA_Green'].iloc[current_idx - Config.HA_CONSECUTIVE_CANDLES + 1:current_idx + 1].values
                     ha_close_values = df['HA_Close'].iloc[current_idx - Config.HA_CONSECUTIVE_CANDLES + 1:current_idx + 1].values
-                    
+
                     # Check for consecutive green candles AND current close > previous close
                     if len(ha_green_values) == Config.HA_CONSECUTIVE_CANDLES:
                         ha_bullish_confirmed = all(ha_green_values) and ha_close_values[-1] > ha_close_values[-2]
-                        
+
                         # Check for consecutive red candles AND current close < previous close
                         ha_bearish_confirmed = all(~ha_green_values) and ha_close_values[-1] < ha_close_values[-2]
 
@@ -146,12 +146,12 @@ class ScoringService:
                 else:
                     long_score += self.SCORE_RSI_EXTREME
                     long_reasons.append(f"Oversold & Rising RSI (RSI: {rsi:.1f}, Rising for {Config.RSI_RISING_CANDLES} candles)")
-                    
+
                     # Heikin Ashi Confirmation (Consecutive green candles with increasing close)
-                    if ha_bullish_confirmed: 
+                    if ha_bullish_confirmed:
                         long_score += self.SCORE_TREND_CONFIRM
                         long_reasons.append(f"Bullish Momentum Confirmed ({Config.HA_CONSECUTIVE_CANDLES} Green HA Candles, Close Rising)")
-                    
+
                     # Volume Check: Current volume > 1.2x average
                     if volume_above_avg:
                         long_score += self.SCORE_VOL_HIGH
@@ -159,7 +159,7 @@ class ScoringService:
                     elif vol_z > 1.0:
                         long_score += self.SCORE_VOL_MED
                         long_reasons.append(f"Moderate Volume (Z-Score: {vol_z:.1f})")
-                    
+
                     # Trend Filter (Are we in a general uptrend?)
                     if close > sma200:
                         long_score += self.SCORE_SMA_FILTER
@@ -168,12 +168,12 @@ class ScoringService:
                 # No SMA200 data, proceed with caution
                 long_score += self.SCORE_RSI_EXTREME
                 long_reasons.append(f"Oversold & Rising RSI (RSI: {rsi:.1f}, Rising for {Config.RSI_RISING_CANDLES} candles)")
-                
+
                 # Heikin Ashi Confirmation (Consecutive green candles with increasing close)
-                if ha_bullish_confirmed: 
+                if ha_bullish_confirmed:
                     long_score += self.SCORE_TREND_CONFIRM
                     long_reasons.append(f"Bullish Momentum Confirmed ({Config.HA_CONSECUTIVE_CANDLES} Green HA Candles, Close Rising)")
-                
+
                 # Volume Check
                 if volume_above_avg:
                     long_score += self.SCORE_VOL_HIGH
@@ -185,7 +185,7 @@ class ScoringService:
         if rsi > Config.RSI_OVERBOUGHT_THRESHOLD and rsi_falling:
             short_score += self.SCORE_RSI_EXTREME
             short_reasons.append(f"Overbought & Falling RSI (RSI: {rsi:.1f}, Falling for {Config.RSI_FALLING_CANDLES} candles)")
-            
+
             # Heikin Ashi Confirmation (Consecutive red candles with decreasing close)
             if ha_bearish_confirmed:
                 short_score += self.SCORE_TREND_CONFIRM
@@ -198,7 +198,7 @@ class ScoringService:
             elif vol_z > 1.0:
                 short_score += self.SCORE_VOL_MED
                 short_reasons.append(f"Moderate Volume (Z-Score: {vol_z:.1f})")
-                
+
             # Trend Filter (Are we in a general downtrend?)
             if sma200 > 0 and close < sma200:
                 short_score += self.SCORE_SMA_FILTER
@@ -209,7 +209,7 @@ class ScoringService:
         # ---------------------------
         # Compare scores to see which side wins (if any)
         # Note: Usually RSI won't be <30 and >70 at same time, so mutually exclusive.
-        
+
         final_score = 0
         direction = "NEUTRAL"
         reasons = []
@@ -223,7 +223,7 @@ class ScoringService:
             final_score = short_score
             direction = "SHORT"
             reasons = short_reasons
-            
+
         # Determine Confidence
         if final_score >= self.CONFIDENCE_HIGH:
             confidence = "High"

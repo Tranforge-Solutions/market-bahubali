@@ -17,7 +17,7 @@ class MarketDataService:
         Identifies latest saved date and only fetches new data (Delta).
         """
         logger.info(f"Fetching data for {ticker}...")
-        
+
         # Get or create Symbol
         symbol = self.db.query(Symbol).filter(Symbol.ticker == ticker).first()
         if not symbol:
@@ -28,15 +28,15 @@ class MarketDataService:
 
         # 1. Check for last timestamp
         last_record = self.db.query(OHLCV).filter(OHLCV.symbol_id == symbol.id).order_by(OHLCV.timestamp.desc()).first()
-        
+
         start_date = None
         is_delta = False
-        
+
         if last_record:
             # We have data
             last_date = last_record.timestamp
             today = datetime.now().date()
-            
+
             # If last record is from today, it might be incomplete/stale.
             # We should delete it and re-fetch to get the latest close/volume.
             if last_date.date() == today:
@@ -48,7 +48,7 @@ class MarketDataService:
             else:
                 # Last record is from the past. Fetch from next day.
                 start_date = last_date + timedelta(days=1)
-                
+
                 # Check if we are already up to date (Start Date > Today)
                 if start_date.date() > today:
                     logger.info(f"{ticker} is already up to date (Last: {last_date.date()})")
@@ -74,13 +74,13 @@ class MarketDataService:
             for index, row in df.iterrows():
                 # index is Timestamp
                 ts = index.to_pydatetime()
-                
+
                 # Double check existence (optimization: could skip this if confident in delta logic)
                 exists = self.db.query(OHLCV).filter(
                     OHLCV.symbol_id == symbol.id,
                     OHLCV.timestamp == ts
                 ).first()
-                
+
                 if not exists:
                     ohlcv = OHLCV(
                         symbol_id=symbol.id,
@@ -93,7 +93,7 @@ class MarketDataService:
                     )
                     self.db.add(ohlcv)
                     new_records += 1
-            
+
             self.db.commit()
             if new_records > 0:
                 logger.info(f"Stored {new_records} new records for {ticker}")
@@ -117,18 +117,18 @@ class MarketDataService:
                 latest = news[0]
                 content = latest.get('content', {})
                 headline = content.get('title')
-                
+
                 # Try to get URL from clickThroughUrl or canonicalUrl
                 url_obj = content.get('clickThroughUrl') or content.get('canonicalUrl')
                 link = url_obj.get('url') if url_obj else None
-                
+
                 return headline, link
         except Exception as e:
             logger.error(f"Error fetching news for {ticker}: {e}")
-        
+
         except Exception as e:
             logger.error(f"Error fetching news for {ticker}: {e}")
-        
+
         return None, None
 
     def fetch_corporate_actions(self, ticker: str):
@@ -143,11 +143,11 @@ class MarketDataService:
             if cal:
                 # Calendar returns a dict where keys are event names and values are dates/lists
                 # Example: {'Ex-Dividend Date': datetime.date(2025, 8, 14), 'Earnings Date': [datetime.date(...)]}
-                
+
                 ex_div = cal.get('Ex-Dividend Date')
                 if ex_div:
                     actions['Ex-Dividend'] = ex_div
-                
+
                 earnings = cal.get('Earnings Date')
                 if earnings:
                     # Earnings Date is often a list
@@ -158,7 +158,7 @@ class MarketDataService:
 
         except Exception as e:
             logger.error(f"Error fetching corporate actions for {ticker}: {e}")
-            
+
     def fetch_shareholding_data(self, ticker: str):
         """
         Fetches shareholding data: Major Holders, Institutional Holders, Mutual Fund Holders.
@@ -171,7 +171,7 @@ class MarketDataService:
         }
         try:
             t = yf.Ticker(ticker)
-            
+
             # 1. Major Holders
             try:
                 # yfinance returns a DataFrame
@@ -190,10 +190,10 @@ class MarketDataService:
                 data["mutualfund_holders"] = t.mutualfund_holders
             except Exception:
                 pass
-                
+
         except Exception as e:
             logger.error(f"Error fetching shareholding for {ticker}: {e}")
-            
+
         return data
 
     def fetch_insider_trading(self, ticker: str):

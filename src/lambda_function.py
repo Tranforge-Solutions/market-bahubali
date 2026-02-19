@@ -11,12 +11,12 @@ def lambda_handler(event, context):
     AWS Lambda Handler
     """
     logger.info(f"Received event: {json.dumps(event)}")
-    
+
     try:
         logger.info("Starting Market Scan from Lambda...")
         run_scan()
         logger.info("Market Scan Completed Successfully.")
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps('Market Scan Completed Successfully')

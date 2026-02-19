@@ -10,23 +10,23 @@ class IndicatorService:
         """Loads OHLCV data from DB into a Pandas DataFrame."""
         from src.config.settings import Config
         from datetime import datetime, timedelta
-        
+
         if lookback_days is None:
             lookback_days = Config.DATA_LOOKBACK_DAYS
-        
+
         symbol = self.db.query(Symbol).filter(Symbol.ticker == ticker).first()
         if not symbol:
             return pd.DataFrame()
 
         # Calculate cutoff date
         cutoff_date = datetime.now() - timedelta(days=lookback_days)
-        
+
         # Query data with lookback limit
         data = self.db.query(OHLCV).filter(
             OHLCV.symbol_id == symbol.id,
             OHLCV.timestamp >= cutoff_date
         ).order_by(OHLCV.timestamp.asc()).all()
-        
+
         if not data:
             return pd.DataFrame()
 
@@ -38,7 +38,7 @@ class IndicatorService:
             'close': d.close,
             'volume': d.volume
         } for d in data]
-        
+
         df = pd.DataFrame(records)
         df.set_index('timestamp', inplace=True)
         return df
@@ -47,7 +47,7 @@ class IndicatorService:
         """Applies TA indicators to the DataFrame using standard Pandas."""
         if df.empty:
             return df
-            
+
         # Helper for SMA
         def calculate_sma(series, window):
             return series.rolling(window=window).mean()
@@ -72,19 +72,19 @@ class IndicatorService:
         def calculate_heikin_ashi(df):
             ha_close = (df['open'] + df['high'] + df['low'] + df['close']) / 4
             ha_open = [df['open'].iloc[0]] # Initialize with first real open
-            
+
             # Iterative calculation for HA Open
             # HA_Open = (Prev HA_Open + Prev HA_Close) / 2
             for i in range(1, len(df)):
                 prev_open = ha_open[-1]
                 prev_close = ha_close.iloc[i-1]
                 ha_open.append((prev_open + prev_close) / 2)
-                
+
             df['HA_Close'] = ha_close
             df['HA_Open'] = ha_open
             df['HA_High'] = df[['high', 'HA_Open', 'HA_Close']].max(axis=1)
             df['HA_Low'] = df[['low', 'HA_Open', 'HA_Close']].min(axis=1)
-            
+
             # Determine Color (True for Green/Bullish, False for Red/Bearish)
             df['HA_Green'] = df['HA_Close'] > df['HA_Open']
             return df
@@ -96,19 +96,19 @@ class IndicatorService:
 
         # RSI
         df['RSI'] = calculate_rsi(df['close'], 14)
-        
+
         # ATR
         df['ATR'] = calculate_atr(df, 14)
-        
+
         # Heikin Ashi
         df = calculate_heikin_ashi(df)
-        
+
         # Volume Z-Score (Custom calculation)
         # Z = (Vol - Mean) / StdDev over 30 days
         roll = df['volume'].rolling(window=30)
         df['Vol_Mean'] = roll.mean()
         df['Vol_Std'] = roll.std()
         df['Vol_Z'] = (df['volume'] - df['Vol_Mean']) / df['Vol_Std']
-        
+
         # Fill NaN for initial periods if needed, or leave as is (Scoring handles NaNs implicitly by false conditions)
         return df

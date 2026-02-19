@@ -19,7 +19,7 @@ class AlertService:
 
         # If specific_chat_id is provided, verify it. Otherwise fallback to default.
         target_chat_id = specific_chat_id if specific_chat_id else self.chat_id
-        
+
         if not target_chat_id:
             logger.warning("No target chat ID provided.")
             return
@@ -48,9 +48,9 @@ class AlertService:
         import json
         from src.database.db import db_instance
         from src.models.models import Subscriber
-        
+
         chat_ids = []
-        
+
         # If specific_chat_id is provided, use it as priority
         if specific_chat_id:
             chat_ids.append(specific_chat_id)
@@ -66,7 +66,7 @@ class AlertService:
                 logger.error(f"Error fetching subscribers: {e}")
             finally:
                 db.close()
-            
+
             # Fallback to default chat_id if list is empty
             if not chat_ids and self.chat_id:
                 chat_ids.append(self.chat_id)
@@ -75,13 +75,13 @@ class AlertService:
         if not chat_ids:
             logger.warning("No recipients found. Skipping alert.")
             return
-            
+
         # Prepare Payload
         base_payload = {
             "caption": caption,
             "parse_mode": "HTML"
         }
-        
+
         if buttons:
             if isinstance(buttons, dict):
                  base_payload['reply_markup'] = json.dumps(buttons)
@@ -90,25 +90,25 @@ class AlertService:
 
         # Construct URL
         base_url = f"https://api.telegram.org/bot{self.bot_token}"
-        
+
         # Broadcast
         for chat_id in set(chat_ids):
             try:
                 payload = base_payload.copy()
                 payload['chat_id'] = chat_id
-                
+
                 # Handle Photo (Reset stream if needed)
                 if hasattr(photo, 'read'):
                     photo.seek(0)
                     files = {'photo': photo}
-                else: 
+                else:
                      files = {'photo': open(photo, 'rb')} if isinstance(photo, str) else None
-                     
+
                 resp = requests.post(f"{base_url}/sendPhoto", data=payload, files=files)
                 if resp.ok:
                     logger.info(f"Alert sent successfully to {chat_id}")
                 else:
                     logger.error(f"Failed to send to {chat_id}: {resp.text}")
-                    
+
             except Exception as e:
                 logger.error(f"Broadcast error to {chat_id}: {e}")

@@ -10,7 +10,7 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: TELEGRAM_BOT_TOKEN
-        sync: false
+        value: 8340769586:AAFgWHHvlKQBdEFFlQ3mmsSVDo9TP_P_jeY
       - key: TELEGRAM_CHAT_ID
         sync: false
       - key: TELEGRAM_BUY_CHANNEL_ID
@@ -18,7 +18,7 @@ services:
       - key: TELEGRAM_SELL_CHANNEL_ID
         sync: false
       - key: TELEGRAM_BOT_USERNAME
-        sync: false
+        value: Market_bahubali_bot
       - key: RSI_OVERSOLD_THRESHOLD
         value: 30
       - key: RSI_OVERBOUGHT_THRESHOLD

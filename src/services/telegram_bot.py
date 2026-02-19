@@ -58,8 +58,12 @@ class TelegramBotHandler:
                         ]
                         reply_markup = InlineKeyboardMarkup(keyboard)
                         
+                        # Get company info
+                        company_name = symbol.name or "N/A"
+                        
                         await update.message.reply_text(
                             f"🎯 {ticker} @ ₹{price:.2f}\n\n"
+                            f"🏢 Company: {company_name}\n"
                             f"Choose order type:",
                             reply_markup=reply_markup
                         )
@@ -135,6 +139,7 @@ class TelegramBotHandler:
             
             await query.edit_message_text(
                 f"🎯 {ticker} @ ₹{price:.2f}\n\n"
+                f"🏢 Company: {symbol.name or 'N/A'}\n"
                 f"Choose order type:",
                 reply_markup=reply_markup
             )
@@ -192,6 +197,7 @@ class TelegramBotHandler:
             await query.edit_message_text(
                 f"✅ Paper Trade Opened\n\n"
                 f"📊 {ticker}\n"
+                f"🏢 {symbol.name or 'N/A'}\n"
                 f"💰 Entry: ₹{price:.2f}\n"
                 f"📉 Stop Loss: ₹{stop_loss:.2f} (-5%)\n"
                 f"📈 Target: ₹{target:.2f} (+10%)\n"

@@ -69,14 +69,28 @@ class SymbolService:
                     mcap_crore = mcap / 10_000_000
                     
                     if mcap_crore > min_mcap_crore:
+                        # Get company info
+                        company_name = info.get('longName') or info.get('shortName', '')
+                        sector = info.get('sector', '')
+                        industry = info.get('industry', '')
+                        
                         # Add or Update
                         if not existing:
-                            new_sym = Symbol(ticker=ticker, is_active=True)
+                            new_sym = Symbol(
+                                ticker=ticker, 
+                                name=company_name,
+                                sector=sector,
+                                industry=industry,
+                                is_active=True
+                            )
                             self.db.add(new_sym)
-                            logger.info(f"✅ Added {ticker} (Mcap: {mcap_crore:.2f} Cr)")
+                            logger.info(f"✅ Added {ticker} - {company_name} (Mcap: {mcap_crore:.2f} Cr)")
                         else:
                             existing.is_active = True
-                            logger.info(f"🔄 Reactivated {ticker} (Mcap: {mcap_crore:.2f} Cr)")
+                            existing.name = company_name
+                            existing.sector = sector
+                            existing.industry = industry
+                            logger.info(f"🔄 Reactivated {ticker} - {company_name} (Mcap: {mcap_crore:.2f} Cr)")
                         
                         count_added += 1
                         # Commit every 5 to save progress
@@ -102,3 +116,59 @@ class SymbolService:
 
         except Exception as e:
             logger.error(f"Failed to sync symbols: {e}")
+    
+    def get_company_type(self, sector: str, industry: str) -> str:
+        """Determine company type based on sector and industry"""
+        if not sector and not industry:
+            return "Unknown"
+            
+        sector_lower = sector.lower() if sector else ""
+        industry_lower = industry.lower() if industry else ""
+        
+        # Technology companies
+        if any(term in sector_lower for term in ['technology', 'software', 'internet']) or \
+           any(term in industry_lower for term in ['software', 'internet', 'technology', 'computer', 'semiconductor']):
+            return "🖥️ Technology"
+        
+        # Healthcare/Medical
+        elif any(term in sector_lower for term in ['healthcare', 'medical', 'pharmaceutical']) or \
+             any(term in industry_lower for term in ['pharmaceutical', 'medical', 'healthcare', 'biotechnology', 'drug']):
+            return "🏥 Healthcare"
+        
+        # Financial Services
+        elif any(term in sector_lower for term in ['financial', 'bank']) or \
+             any(term in industry_lower for term in ['bank', 'financial', 'insurance', 'credit']):
+            return "🏦 Financial"
+        
+        # Energy
+        elif any(term in sector_lower for term in ['energy', 'oil', 'gas']) or \
+             any(term in industry_lower for term in ['oil', 'gas', 'energy', 'petroleum', 'coal']):
+            return "⚡ Energy"
+        
+        # Manufacturing/Industrial
+        elif any(term in sector_lower for term in ['industrial', 'manufacturing']) or \
+             any(term in industry_lower for term in ['manufacturing', 'industrial', 'machinery', 'equipment', 'steel', 'metal']):
+            return "🏭 Industrial"
+        
+        # Consumer goods
+        elif any(term in sector_lower for term in ['consumer', 'retail']) or \
+             any(term in industry_lower for term in ['consumer', 'retail', 'food', 'beverage', 'apparel']):
+            return "🛒 Consumer"
+        
+        # Real Estate
+        elif any(term in sector_lower for term in ['real estate', 'property']) or \
+             any(term in industry_lower for term in ['real estate', 'property', 'construction']):
+            return "🏢 Real Estate"
+        
+        # Utilities
+        elif any(term in sector_lower for term in ['utilities', 'utility']) or \
+             any(term in industry_lower for term in ['utilities', 'electric', 'water', 'power']):
+            return "🔌 Utilities"
+        
+        # Telecommunications
+        elif any(term in sector_lower for term in ['communication', 'telecom']) or \
+             any(term in industry_lower for term in ['telecom', 'communication', 'wireless']):
+            return "📡 Telecom"
+        
+        else:
+            return f"📊 {sector}" if sector else "🏢 Other"

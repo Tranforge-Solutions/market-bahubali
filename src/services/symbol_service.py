@@ -14,11 +14,16 @@ class SymbolService:
         # URL for Nifty 500 list
         self.NIFTY_500_URL = "https://raw.githubusercontent.com/kprohith/nse-stock-analysis/master/ind_nifty500list.csv"
 
-    def sync_high_cap_stocks(self, min_mcap_crore: float = 10000.0):
+    def sync_high_cap_stocks(self, min_mcap_crore: float = None):
         """
         Fetches Nifty 500 list, checks Market Cap, and activates stocks > min_mcap_crore.
         """
-        logger.info("Starting High Cap Stock Sync...")
+        from src.config.settings import Config
+        
+        if min_mcap_crore is None:
+            min_mcap_crore = Config.MIN_MARKET_CAP_CRORE
+        
+        logger.info(f"Starting High Cap Stock Sync (Min Market Cap: ₹{min_mcap_crore:,.0f} Crore)...")
         
         try:
             # 1. Fetch CSV

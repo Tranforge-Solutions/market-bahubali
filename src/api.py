@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 
 from src.database.db import db_instance
-from src.models.models import Symbol, TradeSignal, Order
+from src.models.models import Symbol, TradeSignal, Order, PaperTrade, Subscriber
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,23 @@ class OrderOut(BaseModel):
     price: float
     status: str
     timestamp: datetime
+    
+    class Config:
+        from_attributes = True
+
+class PaperTradeOut(BaseModel):
+    id: int
+    ticker: str
+    entry_price: float
+    exit_price: Optional[float]
+    quantity: int
+    stop_loss: Optional[float]
+    target_price: Optional[float]
+    status: str
+    pnl: Optional[float]
+    pnl_percent: Optional[float]
+    entry_time: datetime
+    exit_time: Optional[datetime]
     
     class Config:
         from_attributes = True
@@ -183,3 +200,65 @@ def get_orders(limit: int = 50, db: Session = Depends(get_db_session)):
             timestamp=o.timestamp
         ))
     return result
+
+@app.get("/paper-trades", response_model=List[PaperTradeOut])
+def get_paper_trades(status: Optional[str] = None, limit: int = 50, db: Session = Depends(get_db_session)):
+    """Get paper trades with optional status filter"""
+    query = db.query(PaperTrade).join(Symbol)
+    
+    if status:
+        query = query.filter(PaperTrade.status == status)
+    
+    trades = query.order_by(PaperTrade.entry_time.desc()).limit(limit).all()
+    
+    result = []
+    for t in trades:
+        result.append(PaperTradeOut(
+            id=t.id,
+            ticker=t.symbol.ticker,
+            entry_price=t.entry_price,
+            exit_price=t.exit_price,
+            quantity=t.quantity,
+            stop_loss=t.stop_loss,
+            target_price=t.target_price,
+            status=t.status,
+            pnl=t.pnl,
+            pnl_percent=t.pnl_percent,
+            entry_time=t.entry_time,
+            exit_time=t.exit_time
+        ))
+    return result
+
+@app.get("/paper-trades/stats")
+def get_paper_trade_stats(db: Session = Depends(get_db_session)):
+    """Get paper trading statistics"""
+    from sqlalchemy import func
+    
+    total_trades = db.query(PaperTrade).count()
+    open_trades = db.query(PaperTrade).filter(PaperTrade.status == "OPEN").count()
+    closed_trades = db.query(PaperTrade).filter(PaperTrade.status == "CLOSED").count()
+    
+    # Calculate win rate and avg P&L for closed trades
+    closed_with_pnl = db.query(PaperTrade).filter(
+        PaperTrade.status == "CLOSED",
+        PaperTrade.pnl.isnot(None)
+    ).all()
+    
+    if closed_with_pnl:
+        winning_trades = len([t for t in closed_with_pnl if t.pnl > 0])
+        win_rate = (winning_trades / len(closed_with_pnl)) * 100
+        avg_pnl = sum([t.pnl for t in closed_with_pnl]) / len(closed_with_pnl)
+        avg_pnl_percent = sum([t.pnl_percent for t in closed_with_pnl]) / len(closed_with_pnl)
+    else:
+        win_rate = 0
+        avg_pnl = 0
+        avg_pnl_percent = 0
+    
+    return {
+        "total_trades": total_trades,
+        "open_trades": open_trades,
+        "closed_trades": closed_trades,
+        "win_rate": round(win_rate, 2),
+        "avg_pnl": round(avg_pnl, 2),
+        "avg_pnl_percent": round(avg_pnl_percent, 2)
+    }

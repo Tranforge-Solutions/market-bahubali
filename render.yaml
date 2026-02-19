@@ -17,6 +17,8 @@ services:
         sync: false
       - key: TELEGRAM_SELL_CHANNEL_ID
         sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        sync: false
       - key: RSI_OVERSOLD_THRESHOLD
         value: 30
       - key: RSI_OVERBOUGHT_THRESHOLD

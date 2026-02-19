@@ -6,14 +6,26 @@ class IndicatorService:
     def __init__(self, db: Session):
         self.db = db
 
-    def load_data(self, ticker: str) -> pd.DataFrame:
+    def load_data(self, ticker: str, lookback_days: int = None) -> pd.DataFrame:
         """Loads OHLCV data from DB into a Pandas DataFrame."""
+        from src.config.settings import Config
+        from datetime import datetime, timedelta
+        
+        if lookback_days is None:
+            lookback_days = Config.DATA_LOOKBACK_DAYS
+        
         symbol = self.db.query(Symbol).filter(Symbol.ticker == ticker).first()
         if not symbol:
             return pd.DataFrame()
 
-        # Query all data (in real app, simpler to limit lookback)
-        data = self.db.query(OHLCV).filter(OHLCV.symbol_id == symbol.id).order_by(OHLCV.timestamp.asc()).all()
+        # Calculate cutoff date
+        cutoff_date = datetime.now() - timedelta(days=lookback_days)
+        
+        # Query data with lookback limit
+        data = self.db.query(OHLCV).filter(
+            OHLCV.symbol_id == symbol.id,
+            OHLCV.timestamp >= cutoff_date
+        ).order_by(OHLCV.timestamp.asc()).all()
         
         if not data:
             return pd.DataFrame()

@@ -133,9 +133,12 @@ def run_scan():
 
                     if direction == "LONG":
                         strategy_logic = (
-                            f"• <b>RSI &lt; 35:</b> Price is Oversold (Cheap). Expecting a bounce.\n"
-                            f"• <b>Heikin Ashi:</b> Green Candle = Bullish Reversal starting.\n"
-                            f"• <b>Volume:</b> High volume confirms buyers are stepping in."
+                            f"<b>📈 Oversold Mean-Reversion Setup Detected</b>\n\n"
+                            f"• RSI(14) deeply oversold and turning upward\n"
+                            f"• Consecutive bullish Heikin Ashi candles indicate selling exhaustion\n"
+                            f"• Volume expansion confirms short-term buyer participation\n"
+                            f"• Price extended below key moving averages — bounce probability elevated\n"
+                            f"• Counter-trend trade: quick relief rally expected, not a trend reversal"
                         )
                     else:
                          strategy_logic = (
@@ -286,12 +289,17 @@ def run_scan():
                     # Generate Chart
                     chart_buf = chart_service.generate_chart(df, ticker)
                     
-                    # Create Inline Keyboard (Buy Button)
+                    # Create Inline Keyboard (Buy Button) with deep link
                     buttons = None
                     if direction == "LONG":
-                        callback_data = f"BUY:{ticker}:{price:.2f}"
+                        # For channels, use deep link that opens private chat with bot
+                        from src.config.settings import Config
+                        bot_username = Config.TELEGRAM_BOT_USERNAME
+                        deep_link_param = f"buy_{signal.id}_{ticker}_{price:.2f}"
+                        deep_link = f"https://t.me/{bot_username}?start={deep_link_param}"
+                        
                         buttons = [[
-                            {"text": f"🚀 Buy Now (₹{price:.2f})", "callback_data": callback_data}
+                            {"text": f"🚀 Buy Now (₹{price:.2f})", "url": deep_link}
                         ]]
                     
                     campaign_channel_id = None

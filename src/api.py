@@ -29,6 +29,12 @@ app = FastAPI(
 )
 security = HTTPBearer()
 
+
+@app.get("/", summary="Health Check", description="API health check endpoint")
+async def root():
+    """Health check endpoint for deployment"""
+    return {"status": "healthy", "message": "Market Monitor API is running"}
+
 # JWT Configuration
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
 ALGORITHM = "HS256"

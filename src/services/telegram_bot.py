@@ -1,7 +1,6 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from sqlalchemy.orm import Session
 from src.database.db import db_instance
 from src.models.models import Subscriber, PaperTrade, TradeSignal, Symbol
 from src.config.settings import Config
@@ -9,6 +8,7 @@ from src.services.portfolio import PortfolioService
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
 
 class TelegramBotHandler:
     def __init__(self):
@@ -103,7 +103,7 @@ class TelegramBotHandler:
             await query.edit_message_text("Invalid signal data.")
             return
 
-        action, ticker, price, signal_id = data[0], data[1], float(data[2]), int(data[3])
+        ticker, price, signal_id = data[1], float(data[2]), int(data[3])
         chat_id = str(query.from_user.id)
 
         db = db_instance.SessionLocal()
@@ -238,9 +238,6 @@ class TelegramBotHandler:
                 return
 
             # Get current price (simplified - use last close)
-            symbol = db.query(Symbol).filter(Symbol.id == trade.symbol_id).first()
-            from src.services.market_data import MarketDataService
-            market_service = MarketDataService(db)
             current_price = trade.entry_price * 1.05  # Placeholder - should fetch real price
 
             # Close trade

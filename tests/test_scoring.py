@@ -28,7 +28,7 @@ def test_scoring_long_setup(scoring_service):
     
     # Should detect LONG signal due to oversold + rising RSI
     assert result['direction'] == "LONG"
-    assert result['score'] >= Config.CONFIDENCE_LOW
+    assert result['score'] >= scoring_service.CONFIDENCE_LOW
     assert len(result['reasons']) > 0
 
 def test_scoring_short_setup(scoring_service):
@@ -52,7 +52,7 @@ def test_scoring_short_setup(scoring_service):
     
     # Should detect SHORT signal due to overbought + falling RSI
     assert result['direction'] == "SHORT"
-    assert result['score'] >= Config.CONFIDENCE_LOW
+    assert result['score'] >= scoring_service.CONFIDENCE_LOW
     assert len(result['reasons']) > 0
 
 def test_scoring_neutral(scoring_service):

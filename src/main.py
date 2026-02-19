@@ -2,8 +2,6 @@
 # Entry point for the application
 
 import logging
-import time
-import schedule
 import html
 from dotenv import load_dotenv
 import os
@@ -16,6 +14,7 @@ from src.services.alerting import AlertService
 from src.services.plotting import ChartService
 from src.services.symbol_service import SymbolService
 from src.services.auto_sell import AutoSellService
+from src.models.models import Symbol, TradeSignal
 
 # Configure logging
 logging.basicConfig(
@@ -26,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Suppress yfinance 404 noise
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
+
 
 def run_scan():
     logger.info("Starting Market Scan...")
@@ -53,8 +53,8 @@ def run_scan():
         auto_sell_service = AutoSellService()
         auto_sell_service.check_and_execute_auto_sells()
 
-                # Get active symbols
-        symbols = db.query(Symbol).filter(Symbol.is_active == True).all()
+        # Get active symbols
+        symbols = db.query(Symbol).filter(Symbol.is_active.is_(True)).all()
         if not symbols:
             logger.warning("No active symbols found after sync. Check market cap threshold or data source.")
             return
@@ -119,26 +119,26 @@ def run_scan():
                     # Format Volume (e.g. 1.5M, 500K)
                     vol = latest_row['volume']
                     if vol >= 1_000_000:
-                        vol_str = f"{vol/1_000_000:.2f}M"
+                        vol_str = f"{vol / 1_000_000:.2f}M"
                     elif vol >= 1_000:
-                        vol_str = f"{vol/1_000:.2f}K"
+                        vol_str = f"{vol / 1_000:.2f}K"
                     else:
                         vol_str = f"{vol:.0f}"
 
                     if direction == "LONG":
                         strategy_logic = (
-                            f"<b>📈 Oversold Mean-Reversion Setup Detected</b>\n\n"
-                            f"• RSI(14) deeply oversold and turning upward\n"
-                            f"• Consecutive bullish Heikin Ashi candles indicate selling exhaustion\n"
-                            f"• Volume expansion confirms short-term buyer participation\n"
-                            f"• Price extended below key moving averages — bounce probability elevated\n"
-                            f"• Counter-trend trade: quick relief rally expected, not a trend reversal"
+                            "<b>📈 Oversold Mean-Reversion Setup Detected</b>\n\n"
+                            "• RSI(14) deeply oversold and turning upward\n"
+                            "• Consecutive bullish Heikin Ashi candles indicate selling exhaustion\n"
+                            "• Volume expansion confirms short-term buyer participation\n"
+                            "• Price extended below key moving averages — bounce probability elevated\n"
+                            "• Counter-trend trade: quick relief rally expected, not a trend reversal"
                         )
                     else:
-                         strategy_logic = (
-                            f"• <b>RSI &gt; 70:</b> Price is Overbought (Expensive). Expecting a drop.\n"
-                            f"• <b>Heikin Ashi:</b> Red Candle = Bearish Reversal starting.\n"
-                            f"• <b>Volume:</b> High volume confirms sellers are aggressive."
+                        strategy_logic = (
+                            "• <b>RSI &gt; 70:</b> Price is Overbought (Expensive). Expecting a drop.\n"
+                            "• <b>Heikin Ashi:</b> Red Candle = Bearish Reversal starting.\n"
+                            "• <b>Volume:</b> High volume confirms sellers are aggressive."
                         )
 
                     msg = (

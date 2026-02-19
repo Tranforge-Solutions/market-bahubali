@@ -17,6 +17,30 @@ services:
         sync: false
       - key: TELEGRAM_SELL_CHANNEL_ID
         sync: false
+      - key: RSI_OVERSOLD_THRESHOLD
+        value: 30
+      - key: RSI_OVERBOUGHT_THRESHOLD
+        value: 70
+      - key: RSI_RISING_CANDLES
+        value: 2
+      - key: RSI_FALLING_CANDLES
+        value: 2
+      - key: HA_CONSECUTIVE_CANDLES
+        value: 2
+      - key: MAX_DISTANCE_BELOW_SMA200_PERCENT
+        value: 18
+      - key: VOLUME_MULTIPLIER
+        value: 1.2
+      - key: VOLUME_AVERAGE_PERIOD
+        value: 20
+      - key: DATA_LOOKBACK_DAYS
+        value: 365
+      - key: PRIMARY_WINDOW_CANDLES
+        value: 70
+      - key: CONFIRMATION_WINDOW_CANDLES
+        value: 30
+      - key: MIN_MARKET_CAP_CRORE
+        value: 10000
     healthCheckPath: /
 
 

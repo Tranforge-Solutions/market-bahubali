@@ -3,7 +3,7 @@
 REST API for portfolio management and authentication
 """
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
@@ -13,12 +13,22 @@ from datetime import datetime, timedelta
 import jwt
 import random
 import string
+import logging
 from sqlalchemy.orm import Session
 from src.database.db import db_instance
-from src.models.models import Subscriber, PaperTrade, Symbol
+from src.models.models import Subscriber, PaperTrade, Symbol, TradeSignal
 from src.services.portfolio import PortfolioService
 from src.services.alerting import AlertService
 import os
+
+logger = logging.getLogger(__name__)
+
+# Simple job status tracking
+job_status = {
+    "last_run": None,
+    "status": "idle",
+    "message": "No jobs run yet"
+}
 
 app = FastAPI(
     title="Market Monitor Trading API",
@@ -34,6 +44,103 @@ security = HTTPBearer()
 async def root():
     """Health check endpoint for deployment"""
     return {"status": "healthy", "message": "Market Monitor API is running"}
+
+
+@app.get("/status", summary="System Status", description="Get system status and configuration")
+async def get_status():
+    """Get system status"""
+    return {
+        "status": "running",
+        "version": "1.0.0",
+        "environment": "production" if os.getenv("DATABASE_URL") else "development",
+        "features": {
+            "paper_trading": True,
+            "telegram_bot": True,
+            "auto_sell": True,
+            "portfolio_tracking": True
+        }
+    }
+
+
+@app.post("/run-job", summary="Trigger Market Scan", description="Manually trigger market scan job")
+async def run_job(background_tasks: BackgroundTasks):
+    """Trigger market scan job"""
+    def run_scan_task():
+        global job_status
+        try:
+            job_status["status"] = "running"
+            job_status["message"] = "Market scan in progress..."
+            job_status["last_run"] = datetime.now()
+            
+            from src.main import run_scan
+            logger.info("Starting background market scan...")
+            run_scan()
+            logger.info("Background market scan completed.")
+            
+            job_status["status"] = "completed"
+            job_status["message"] = "Market scan completed successfully"
+        except Exception as e:
+            logger.error(f"Background scan failed: {e}")
+            job_status["status"] = "failed"
+            job_status["message"] = f"Market scan failed: {str(e)}"
+    
+    background_tasks.add_task(run_scan_task)
+    return {"status": "success", "message": "Market scan triggered and running in background."}
+
+
+@app.get("/job-status", summary="Get Job Status", description="Get the status of the last background job")
+async def get_job_status():
+    """Get the status of the last background job"""
+    return job_status
+
+
+@app.get("/health", summary="Health Check", description="Check if the API and database are working")
+async def health_check(db: Session = Depends(get_db)):
+    """Check if the API and database are working"""
+    try:
+        symbol_count = db.query(Symbol).count()
+        signal_count = db.query(TradeSignal).count()
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "symbols": symbol_count,
+            "signals": signal_count
+        }
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
+
+
+@app.get("/symbols", summary="Get Active Symbols", description="Get list of active trading symbols")
+async def get_symbols(db: Session = Depends(get_db)):
+    """Get active symbols"""
+    symbols = db.query(Symbol).filter(Symbol.is_active.is_(True)).all()
+    return [{
+        "id": s.id,
+        "ticker": s.ticker,
+        "name": s.name,
+        "sector": s.sector,
+        "industry": s.industry,
+        "is_active": s.is_active
+    } for s in symbols]
+
+
+@app.get("/signals", summary="Get Trading Signals", description="Get recent trading signals")
+async def get_signals(limit: int = 50, db: Session = Depends(get_db)):
+    """Get recent trading signals"""
+    signals = db.query(TradeSignal).join(Symbol).order_by(TradeSignal.generated_at.desc()).limit(limit).all()
+    
+    result = []
+    for s in signals:
+        result.append({
+            "id": s.id,
+            "symbol_ticker": s.symbol.ticker,
+            "direction": s.direction,
+            "score": s.score,
+            "confidence": s.confidence,
+            "rsi": s.rsi,
+            "timestamp": s.generated_at
+        })
+    return result
 
 # JWT Configuration
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")

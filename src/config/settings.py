@@ -10,3 +10,9 @@ class Config:
     TELEGRAM_BUY_CHANNEL_ID = os.getenv("TELEGRAM_BUY_CHANNEL_ID")
     TELEGRAM_SELL_CHANNEL_ID = os.getenv("TELEGRAM_SELL_CHANNEL_ID")
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    
+    # RSI Strategy Parameters
+    RSI_OVERSOLD_THRESHOLD = float(os.getenv("RSI_OVERSOLD_THRESHOLD", "30"))
+    RSI_OVERBOUGHT_THRESHOLD = float(os.getenv("RSI_OVERBOUGHT_THRESHOLD", "70"))
+    RSI_RISING_CANDLES = int(os.getenv("RSI_RISING_CANDLES", "2"))
+    RSI_FALLING_CANDLES = int(os.getenv("RSI_FALLING_CANDLES", "2"))

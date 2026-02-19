@@ -1,5 +1,6 @@
 import pandas as pd
 from typing import Dict, Any
+from src.config.settings import Config
 
 class ScoringService:
     """
@@ -23,7 +24,7 @@ class ScoringService:
     CONFIDENCE_MED = 50
     CONFIDENCE_LOW = 30
 
-    def score_signal(self, row: pd.Series) -> Dict[str, Any]:
+    def score_signal(self, row: pd.Series, df: pd.DataFrame = None) -> Dict[str, Any]:
         """
         Evaluates a single candle (row) against scoring rules.
         Returns a dictionary with score, confidence, direction, and reasoning.
@@ -38,13 +39,32 @@ class ScoringService:
         vol_z = row.get('Vol_Z', 0)
         close = row['close']
         sma200 = row.get('SMA_200', 0)
+        
+        # Check RSI rising/falling trend
+        rsi_rising = False
+        rsi_falling = False
+        
+        if df is not None and len(df) >= Config.RSI_RISING_CANDLES:
+            # Get the index of current row
+            current_idx = df.index.get_loc(row.name)
+            
+            # Check if we have enough previous candles
+            if current_idx >= Config.RSI_RISING_CANDLES:
+                # Get RSI values for last N candles including current
+                rsi_values = df['RSI'].iloc[current_idx - Config.RSI_RISING_CANDLES:current_idx + 1].values
+                
+                # Check if RSI is consistently rising
+                rsi_rising = all(rsi_values[i] < rsi_values[i+1] for i in range(len(rsi_values)-1))
+                
+                # Check if RSI is consistently falling
+                rsi_falling = all(rsi_values[i] > rsi_values[i+1] for i in range(len(rsi_values)-1))
 
         # ---------------------------
         # LONG Logic (Buying the Dip)
         # ---------------------------
-        if rsi < 35:
+        if rsi < Config.RSI_OVERSOLD_THRESHOLD and rsi_rising:
             long_score += self.SCORE_RSI_EXTREME
-            long_reasons.append(f"Strong Oversold Condition (RSI: {rsi:.1f})")
+            long_reasons.append(f"Oversold & Rising RSI (RSI: {rsi:.1f}, Rising for {Config.RSI_RISING_CANDLES} candles)")
             
             # Heikin Ashi Confirmation (Green implies reversal starting?)
             if ha_green: 
@@ -64,9 +84,9 @@ class ScoringService:
         # ---------------------------
         # SHORT Logic (Selling the Top)
         # ---------------------------
-        if rsi > 70:
+        if rsi > Config.RSI_OVERBOUGHT_THRESHOLD and rsi_falling:
             short_score += self.SCORE_RSI_EXTREME
-            short_reasons.append(f"Strong Overbought Condition (RSI: {rsi:.1f})")
+            short_reasons.append(f"Overbought & Falling RSI (RSI: {rsi:.1f}, Falling for {Config.RSI_FALLING_CANDLES} candles)")
             
             # Heikin Ashi Confirmation (Red implies weakness?)
             if not ha_green:

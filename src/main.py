@@ -87,7 +87,7 @@ def run_scan():
                 
                 # 3. Score (Latest Candle)
                 latest_row = df.iloc[-1]
-                result = scoring_service.score_signal(latest_row)
+                result = scoring_service.score_signal(latest_row, df)
                 
                 logger.info(f"Analysis for {symbol.ticker}: Score={result['score']} ({result['confidence']})")
                 

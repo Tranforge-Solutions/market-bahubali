@@ -1,264 +1,274 @@
-from fastapi import FastAPI, HTTPException, Depends, Query, BackgroundTasks
-from sqlalchemy.orm import Session
+#!/usr/bin/env python3
+"""
+REST API for portfolio management and authentication
+"""
+
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
+from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime
-from pydantic import BaseModel
-from contextlib import asynccontextmanager
-import os
-import logging
-from datetime import datetime
-
+from datetime import datetime, timedelta
+import jwt
+import random
+import string
+from sqlalchemy.orm import Session
 from src.database.db import db_instance
-from src.models.models import Symbol, TradeSignal, Order, PaperTrade, Subscriber
+from src.models.models import Subscriber, PaperTrade, Symbol
+from src.services.portfolio import PortfolioService
+from src.services.alerting import AlertService
+import os
 
-logger = logging.getLogger(__name__)
+app = FastAPI(
+    title="Market Monitor Trading API",
+    description="REST API for paper trading system with portfolio management and authentication",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+security = HTTPBearer()
 
-# Simple job status tracking
-job_status = {
-    "last_run": None,
-    "status": "idle",
-    "message": "No jobs run yet"
-}
+# JWT Configuration
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Define Pydantic Models for Response
-class SymbolOut(BaseModel):
+# In-memory OTP storage (use Redis in production)
+otp_storage = {}
+
+class LoginRequest(BaseModel):
+    mobile: str = Field(..., description="Mobile number linked to telegram account", example="9876543210")
+
+class VerifyOTPRequest(BaseModel):
+    mobile: str = Field(..., description="Mobile number", example="9876543210")
+    otp: str = Field(..., description="6-digit OTP received on telegram", example="123456")
+
+class TradeFilter(BaseModel):
+    status: Optional[str] = Field(None, description="Trade status filter", example="OPEN")
+    symbol: Optional[str] = Field(None, description="Symbol filter", example="RELIANCE.NS")
+    date_from: Optional[datetime] = Field(None, description="Start date filter")
+    date_to: Optional[datetime] = Field(None, description="End date filter")
+
+class TradeResponse(BaseModel):
     id: int
-    ticker: str
-    name: Optional[str]
-    is_active: bool
-    
-    class Config:
-        from_attributes = True
-
-class SignalOut(BaseModel):
-    id: int
-    symbol_ticker: str
-    direction: str
-    score: float
-    confidence: str
-    rsi: float
-    price: float
-    timestamp: datetime
-    reasons: List[str] = []
-    
-    class Config:
-        from_attributes = True
-
-class OrderOut(BaseModel):
-    id: int
-    ticker: str
-    action: str
-    quantity: int
-    price: float
-    status: str
-    timestamp: datetime
-    
-    class Config:
-        from_attributes = True
-
-class PaperTradeOut(BaseModel):
-    id: int
-    ticker: str
+    symbol: str
+    company_name: str
     entry_price: float
     exit_price: Optional[float]
     quantity: int
-    stop_loss: Optional[float]
-    target_price: Optional[float]
-    status: str
     pnl: Optional[float]
     pnl_percent: Optional[float]
+    status: str
     entry_time: datetime
     exit_time: Optional[datetime]
-    
-    class Config:
-        from_attributes = True
+    exit_reason: Optional[str]
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Initialize DB tables on startup."""
-    logger.info("Starting up: initializing database tables...")
-    db_instance.create_tables()
-    logger.info("Database tables ready.")
-    yield
-    logger.info("Shutting down.")
+class PortfolioResponse(BaseModel):
+    total_pnl: float = Field(..., description="Total profit/loss in rupees")
+    total_trades: int = Field(..., description="Total number of completed trades")
+    winning_trades: int = Field(..., description="Number of profitable trades")
+    losing_trades: int = Field(..., description="Number of loss-making trades")
+    win_rate: float = Field(..., description="Win rate percentage")
+    avg_pnl: float = Field(..., description="Average P&L per trade")
+    open_positions: int = Field(..., description="Number of currently open trades")
 
-app = FastAPI(title="Market Monitor API", lifespan=lifespan)
-
-def get_db_session():
+def get_db():
     db = db_instance.SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-@app.get("/")
-def read_root():
-    return {"status": "online", "system": "Market Monitor"}
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-@app.post("/run-job")
-def run_job(background_tasks: BackgroundTasks):
-    """Trigger the market scan job manually or via webhook."""
-    def run_scan_task():
-        global job_status
-        try:
-            job_status["status"] = "running"
-            job_status["message"] = "Market scan in progress..."
-            job_status["last_run"] = datetime.now()
-            
-            from src.main import run_scan
-            logger.info("Starting background market scan...")
-            run_scan()
-            logger.info("Background market scan completed.")
-            
-            job_status["status"] = "completed"
-            job_status["message"] = "Market scan completed successfully"
-        except Exception as e:
-            logger.error(f"Background scan failed: {e}")
-            job_status["status"] = "failed"
-            job_status["message"] = f"Market scan failed: {str(e)}"
-    
-    background_tasks.add_task(run_scan_task)
-    return {"status": "success", "message": "Market scan triggered and running in background."}
-
-@app.get("/job-status")
-def get_job_status():
-    """Get the status of the last background job."""
-    return job_status
-
-@app.post("/test-job")
-def test_job():
-    return {"status": "success", "message": "Test job triggered."}
-
-@app.get("/health")
-def health_check():
-    """Check if the API and database are working."""
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
-        db = db_instance.SessionLocal()
-        symbol_count = db.query(Symbol).count()
-        signal_count = db.query(TradeSignal).count()
-        db.close()
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "symbols": symbol_count,
-            "signals": signal_count
-        }
-    except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        chat_id: str = payload.get("sub")
+        if chat_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return chat_id
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
-@app.get("/symbols", response_model=List[SymbolOut])
-def get_symbols(db: Session = Depends(get_db_session)):
-    return db.query(Symbol).filter(Symbol.is_active == True).all()
+def generate_otp():
+    return ''.join(random.choices(string.digits, k=6))
 
-@app.get("/signals", response_model=List[SignalOut])
-def get_signals(limit: int = 50, db: Session = Depends(get_db_session)):
-    # Join with Symbol to get ticker
-    signals = db.query(TradeSignal).join(Symbol).order_by(TradeSignal.generated_at.desc()).limit(limit).all()
+@app.post("/auth/login", summary="Send OTP to Telegram", description="Send 6-digit OTP to user's telegram account for authentication")
+async def login(request: LoginRequest, db: Session = Depends(get_db)):
+    """Send OTP to user's telegram"""
+    # Find subscriber by mobile (assuming mobile is stored in chat_id for now)
+    subscriber = db.query(Subscriber).filter(Subscriber.chat_id.contains(request.mobile)).first()
     
-    result = []
-    for s in signals:
-        # Use 'entry_price' from model, might be null if not set, fallback to 0.0
-        price = s.entry_price if s.entry_price else 0.0
-        
-        # Regenerate Reasons dynamically
-        reasons = []
-        if s.direction == "LONG":
-            if s.rsi < 30: reasons.append(f"Oversold (RSI: {s.rsi:.1f})")
-            if s.score > 50: reasons.append("Bullish Trend Confirmation")
-            reasons.append("Strategy: Dip Buy")
-        else:
-             if s.rsi > 70: reasons.append(f"Overbought (RSI: {s.rsi:.1f})")
-             if s.score > 50: reasons.append("Bearish Trend Confirmation")
-             reasons.append("Strategy: Top Sell")
-
-        result.append(SignalOut(
-            id=s.id,
-            symbol_ticker=s.symbol.ticker,
-            direction=s.direction,
-            score=s.score,
-            confidence=s.confidence,
-            rsi=s.rsi,
-            price=price,
-            timestamp=s.generated_at,
-            reasons=reasons
-        ))
-    return result
-
-@app.get("/orders", response_model=List[OrderOut])
-def get_orders(limit: int = 50, db: Session = Depends(get_db_session)):
-    orders = db.query(Order).join(Symbol).order_by(Order.timestamp.desc()).limit(limit).all()
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="User not found. Please start the telegram bot first.")
     
-    result = []
-    for o in orders:
-        result.append(OrderOut(
-            id=o.id,
-            ticker=o.symbol.ticker,
-            action=o.action,
-            quantity=o.quantity,
-            price=o.price,
-            status=o.status,
-            timestamp=o.timestamp
-        ))
-    return result
-
-@app.get("/paper-trades", response_model=List[PaperTradeOut])
-def get_paper_trades(status: Optional[str] = None, limit: int = 50, db: Session = Depends(get_db_session)):
-    """Get paper trades with optional status filter"""
-    query = db.query(PaperTrade).join(Symbol)
-    
-    if status:
-        query = query.filter(PaperTrade.status == status)
-    
-    trades = query.order_by(PaperTrade.entry_time.desc()).limit(limit).all()
-    
-    result = []
-    for t in trades:
-        result.append(PaperTradeOut(
-            id=t.id,
-            ticker=t.symbol.ticker,
-            entry_price=t.entry_price,
-            exit_price=t.exit_price,
-            quantity=t.quantity,
-            stop_loss=t.stop_loss,
-            target_price=t.target_price,
-            status=t.status,
-            pnl=t.pnl,
-            pnl_percent=t.pnl_percent,
-            entry_time=t.entry_time,
-            exit_time=t.exit_time
-        ))
-    return result
-
-@app.get("/paper-trades/stats")
-def get_paper_trade_stats(db: Session = Depends(get_db_session)):
-    """Get paper trading statistics"""
-    from sqlalchemy import func
-    
-    total_trades = db.query(PaperTrade).count()
-    open_trades = db.query(PaperTrade).filter(PaperTrade.status == "OPEN").count()
-    closed_trades = db.query(PaperTrade).filter(PaperTrade.status == "CLOSED").count()
-    
-    # Calculate win rate and avg P&L for closed trades
-    closed_with_pnl = db.query(PaperTrade).filter(
-        PaperTrade.status == "CLOSED",
-        PaperTrade.pnl.isnot(None)
-    ).all()
-    
-    if closed_with_pnl:
-        winning_trades = len([t for t in closed_with_pnl if t.pnl > 0])
-        win_rate = (winning_trades / len(closed_with_pnl)) * 100
-        avg_pnl = sum([t.pnl for t in closed_with_pnl]) / len(closed_with_pnl)
-        avg_pnl_percent = sum([t.pnl_percent for t in closed_with_pnl]) / len(closed_with_pnl)
-    else:
-        win_rate = 0
-        avg_pnl = 0
-        avg_pnl_percent = 0
-    
-    return {
-        "total_trades": total_trades,
-        "open_trades": open_trades,
-        "closed_trades": closed_trades,
-        "win_rate": round(win_rate, 2),
-        "avg_pnl": round(avg_pnl, 2),
-        "avg_pnl_percent": round(avg_pnl_percent, 2)
+    # Generate and store OTP
+    otp = generate_otp()
+    otp_storage[request.mobile] = {
+        "otp": otp,
+        "chat_id": subscriber.chat_id,
+        "expires": datetime.utcnow() + timedelta(minutes=5)
     }
+    
+    # Send OTP via telegram
+    alert_service = AlertService()
+    msg = f"🔐 <b>Login OTP</b>\n\nYour OTP: <code>{otp}</code>\n\nValid for 5 minutes."
+    alert_service.send_telegram_message(msg, specific_chat_id=subscriber.chat_id)
+    
+    return {"message": "OTP sent to your telegram"}
+
+@app.post("/auth/verify-otp", summary="Verify OTP and get JWT token", description="Verify the OTP received on telegram and get JWT access token")
+async def verify_otp(request: VerifyOTPRequest):
+    """Verify OTP and return JWT token"""
+    stored_data = otp_storage.get(request.mobile)
+    
+    if not stored_data:
+        raise HTTPException(status_code=400, detail="OTP not found or expired")
+    
+    if datetime.utcnow() > stored_data["expires"]:
+        del otp_storage[request.mobile]
+        raise HTTPException(status_code=400, detail="OTP expired")
+    
+    if stored_data["otp"] != request.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+    
+    # Generate JWT token
+    access_token = create_access_token(data={"sub": stored_data["chat_id"]})
+    
+    # Clean up OTP
+    del otp_storage[request.mobile]
+    
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/portfolio", response_model=PortfolioResponse, summary="Get Portfolio Summary", description="Get complete portfolio performance summary for authenticated user")
+async def get_portfolio(chat_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+    """Get user portfolio summary"""
+    portfolio_service = PortfolioService(db)
+    portfolio = portfolio_service.get_user_portfolio(chat_id)
+    
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    
+    return PortfolioResponse(
+        total_pnl=portfolio["total_pnl"],
+        total_trades=portfolio["total_trades"],
+        winning_trades=portfolio["winning_trades"],
+        losing_trades=portfolio["losing_trades"],
+        win_rate=portfolio["win_rate"],
+        avg_pnl=portfolio["avg_pnl"],
+        open_positions=len(portfolio["open_trades"])
+    )
+
+@app.get("/trades", response_model=List[TradeResponse], summary="Get Trade History", description="Get user's trade history with optional filters")
+async def get_trades(
+    status: Optional[str] = None,
+    symbol: Optional[str] = None,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+    chat_id: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """Get user trades with filters"""
+    subscriber = db.query(Subscriber).filter(Subscriber.chat_id == chat_id).first()
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    query = db.query(PaperTrade).filter(PaperTrade.subscriber_id == subscriber.id)
+    
+    # Apply filters
+    if status:
+        query = query.filter(PaperTrade.status == status.upper())
+    if symbol:
+        symbol_obj = db.query(Symbol).filter(Symbol.ticker == symbol.upper()).first()
+        if symbol_obj:
+            query = query.filter(PaperTrade.symbol_id == symbol_obj.id)
+    if date_from:
+        query = query.filter(PaperTrade.entry_time >= date_from)
+    if date_to:
+        query = query.filter(PaperTrade.entry_time <= date_to)
+    
+    trades = query.order_by(PaperTrade.entry_time.desc()).all()
+    
+    result = []
+    for trade in trades:
+        symbol_obj = db.query(Symbol).filter(Symbol.id == trade.symbol_id).first()
+        result.append(TradeResponse(
+            id=trade.id,
+            symbol=symbol_obj.ticker,
+            company_name=symbol_obj.name or "N/A",
+            entry_price=trade.entry_price,
+            exit_price=trade.exit_price,
+            quantity=trade.quantity,
+            pnl=trade.pnl,
+            pnl_percent=trade.pnl_percent,
+            status=trade.status,
+            entry_time=trade.entry_time,
+            exit_time=trade.exit_time,
+            exit_reason=trade.exit_reason
+        ))
+    
+    return result
+
+@app.get("/leaderboard", summary="Get Leaderboard", description="Get top 10 performers leaderboard (privacy-masked)")
+async def get_leaderboard(db: Session = Depends(get_db)):
+    """Get top performers leaderboard"""
+    portfolio_service = PortfolioService(db)
+    leaders = portfolio_service.get_leaderboard(10)
+    
+    result = []
+    for i, leader in enumerate(leaders, 1):
+        win_rate = (leader.wins / leader.trade_count * 100) if leader.trade_count > 0 else 0
+        result.append({
+            "rank": i,
+            "user_id": f"***{leader.chat_id[-4:]}",  # Masked for privacy
+            "total_pnl": float(leader.total_pnl),
+            "trade_count": leader.trade_count,
+            "wins": leader.wins,
+            "win_rate": round(win_rate, 1)
+        })
+    
+    return result
+
+@app.post("/trades/{trade_id}/sell", summary="Manual Sell Trade", description="Manually close an open trade at current market price")
+async def manual_sell(
+    trade_id: int,
+    chat_id: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """Manually sell a trade"""
+    subscriber = db.query(Subscriber).filter(Subscriber.chat_id == chat_id).first()
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    trade = db.query(PaperTrade).filter(
+        PaperTrade.id == trade_id,
+        PaperTrade.subscriber_id == subscriber.id,
+        PaperTrade.status == "OPEN"
+    ).first()
+    
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade not found or already closed")
+    
+    # Get current price and close trade
+    from src.services.auto_sell import AutoSellService
+    auto_sell_service = AutoSellService()
+    symbol = db.query(Symbol).filter(Symbol.id == trade.symbol_id).first()
+    current_price = auto_sell_service.get_current_price(symbol.ticker)
+    
+    if not current_price:
+        raise HTTPException(status_code=400, detail="Unable to fetch current price")
+    
+    # Execute manual sell
+    auto_sell_service.execute_auto_sell(db, trade, symbol, current_price, "MANUAL")
+    
+    return {"message": "Trade sold successfully", "exit_price": current_price}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

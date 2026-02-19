@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from src.database.db import db_instance
 from src.models.models import Subscriber, PaperTrade, TradeSignal, Symbol
 from src.config.settings import Config
+from src.services.portfolio import PortfolioService
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ class TelegramBotHandler:
                         # Show order options
                         keyboard = [
                             [InlineKeyboardButton("📊 Quick Buy (Default)", callback_data=f"QUICK_BUY:{signal_id}:{ticker}:{price}")],
-                            [InlineKeyboardButton("⚙️ Configure Order", callback_data=f"CONFIG:{signal_id}:{ticker}:{price}")],
+                            [InlineKeyboardButton("⚙️ Custom Target/SL", callback_data=f"CUSTOM:{signal_id}:{ticker}:{price}")],
                             [InlineKeyboardButton("❌ Cancel", callback_data="CANCEL")]
                         ]
                         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -132,7 +133,7 @@ class TelegramBotHandler:
             # Show order configuration options
             keyboard = [
                 [InlineKeyboardButton("📊 Quick Buy (Default)", callback_data=f"QUICK_BUY:{signal_id}:{ticker}:{price}")],
-                [InlineKeyboardButton("⚙️ Configure Order", callback_data=f"CONFIG:{signal_id}:{ticker}:{price}")],
+                [InlineKeyboardButton("⚙️ Custom Target/SL", callback_data=f"CUSTOM:{signal_id}:{ticker}:{price}")],
                 [InlineKeyboardButton("❌ Cancel", callback_data="CANCEL")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -269,13 +270,106 @@ class TelegramBotHandler:
         finally:
             db.close()
     
+    async def handle_custom_order(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle custom order configuration"""
+        query = update.callback_query
+        await query.answer()
+        
+        data = query.data.split(":")
+        signal_id, ticker, price = int(data[1]), data[2], float(data[3])
+        
+        # Show custom target options
+        keyboard = [
+            [InlineKeyboardButton("🎯 15% Target", callback_data=f"TARGET:15:{signal_id}:{ticker}:{price}")],
+            [InlineKeyboardButton("🎯 20% Target", callback_data=f"TARGET:20:{signal_id}:{ticker}:{price}")],
+            [InlineKeyboardButton("🎯 25% Target", callback_data=f"TARGET:25:{signal_id}:{ticker}:{price}")],
+            [InlineKeyboardButton("⬅️ Back", callback_data=f"BUY:{ticker}:{price}:{signal_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"🎯 <b>Select Target Profit</b>\n\n"
+            f"📊 {ticker} @ ₹{price:.2f}\n\n"
+            f"Choose your profit target:",
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+    
+    async def handle_target_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle target percentage selection"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Parse: TARGET:PERCENT:SIGNAL_ID:TICKER:PRICE
+        data = query.data.split(":")
+        target_pct, signal_id, ticker, price = int(data[1]), int(data[2]), data[3], float(data[4])
+        chat_id = str(query.from_user.id)
+        
+        db = db_instance.SessionLocal()
+        try:
+            subscriber = db.query(Subscriber).filter(Subscriber.chat_id == chat_id).first()
+            symbol = db.query(Symbol).filter(Symbol.ticker == ticker).first()
+            signal = db.query(TradeSignal).filter(TradeSignal.id == signal_id).first()
+            
+            if not all([subscriber, symbol, signal]):
+                await query.edit_message_text("Error: Invalid data.")
+                return
+            
+            # Calculate custom parameters
+            quantity = 1
+            target_price = price * (1 + target_pct / 100)
+            sl_pct = max(3, target_pct * 0.4)  # SL = 40% of target, min 3%
+            stop_loss = price * (1 - sl_pct / 100)
+            
+            # Create paper trade
+            trade = PaperTrade(
+                subscriber_id=subscriber.id,
+                signal_id=signal_id,
+                symbol_id=symbol.id,
+                entry_price=price,
+                quantity=quantity,
+                stop_loss=stop_loss,
+                target_price=target_price,
+                auto_exit=True,
+                status="OPEN"
+            )
+            db.add(trade)
+            db.commit()
+            
+            # Show SELL button
+            keyboard = [[InlineKeyboardButton("🔴 SELL", callback_data=f"SELL:{trade.id}:{ticker}")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                f"✅ <b>Custom Paper Trade Opened</b>\n\n"
+                f"📊 {ticker}\n"
+                f"🏢 {symbol.name or 'N/A'}\n"
+                f"💰 Entry: ₹{price:.2f}\n"
+                f"📈 Target: ₹{target_price:.2f} (+{target_pct}%)\n"
+                f"📉 Stop Loss: ₹{stop_loss:.2f} (-{sl_pct:.1f}%)\n"
+                f"🔢 Qty: {quantity}\n"
+                f"🤖 Auto-exit: Enabled\n\n"
+                f"⚠️ This is a simulated trade.",
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in custom target: {e}")
+            await query.edit_message_text("Error creating trade.")
+        finally:
+            db.close()
+    
     def setup_handlers(self, application: Application):
         """Setup all command and callback handlers"""
         application.add_handler(CommandHandler("start", self.start_command))
         application.add_handler(CommandHandler("mytrades", self.my_trades_command))
+        application.add_handler(CommandHandler("portfolio", self.portfolio_command))
+        application.add_handler(CommandHandler("leaderboard", self.leaderboard_command))
         application.add_handler(CallbackQueryHandler(self.handle_buy_callback, pattern="^BUY:"))
         application.add_handler(CallbackQueryHandler(self.handle_quick_buy, pattern="^QUICK_BUY:"))
-        application.add_handler(CallbackQueryHandler(self.handle_sell_callback, pattern="^SELL:"))
+        application.add_handler(CallbackQueryHandler(self.handle_custom_order, pattern="^CUSTOM:"))
+        application.add_handler(CallbackQueryHandler(self.handle_target_selection, pattern="^TARGET:"))
     
     async def my_trades_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show user's open trades"""
@@ -317,6 +411,62 @@ class TelegramBotHandler:
         except Exception as e:
             logger.error(f"Error in mytrades: {e}")
             await update.message.reply_text("Error fetching trades.")
+        finally:
+            db.close()
+    
+    async def portfolio_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show user's portfolio summary"""
+        chat_id = str(update.effective_chat.id)
+        db = db_instance.SessionLocal()
+        
+        try:
+            portfolio_service = PortfolioService(db)
+            portfolio = portfolio_service.get_user_portfolio(chat_id)
+            msg = portfolio_service.format_portfolio_message(portfolio)
+            
+            await update.message.reply_text(msg, parse_mode="HTML")
+            
+        except Exception as e:
+            logger.error(f"Error in portfolio command: {e}")
+            await update.message.reply_text("Error fetching portfolio.")
+        finally:
+            db.close()
+    
+    async def leaderboard_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show top performers leaderboard"""
+        db = db_instance.SessionLocal()
+        
+        try:
+            portfolio_service = PortfolioService(db)
+            leaders = portfolio_service.get_leaderboard(10)
+            
+            if not leaders:
+                await update.message.reply_text("📊 No trading data available yet.")
+                return
+            
+            msg = "🏆 <b>Top Performers Leaderboard</b>\n\n"
+            
+            for i, leader in enumerate(leaders, 1):
+                emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+                win_rate = (leader.wins / leader.trade_count * 100) if leader.trade_count > 0 else 0
+                pnl_emoji = "🟢" if leader.total_pnl > 0 else "🔴"
+                
+                # Mask chat_id for privacy (show only last 4 digits)
+                masked_id = f"***{leader.chat_id[-4:]}"
+                
+                msg += (
+                    f"{emoji} {masked_id}\n"
+                    f"{pnl_emoji} P&L: ₹{leader.total_pnl:.2f} | "
+                    f"Win: {win_rate:.1f}% ({leader.wins}/{leader.trade_count})\n\n"
+                )
+            
+            msg += "⚠️ <b>Paper Trading Leaderboard</b> - No real money"
+            
+            await update.message.reply_text(msg, parse_mode="HTML")
+            
+        except Exception as e:
+            logger.error(f"Error in leaderboard command: {e}")
+            await update.message.reply_text("Error fetching leaderboard.")
         finally:
             db.close()
     

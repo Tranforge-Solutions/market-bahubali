@@ -15,7 +15,7 @@ from src.services.scoring import ScoringService
 from src.services.alerting import AlertService
 from src.services.plotting import ChartService
 from src.services.symbol_service import SymbolService
-from src.models.models import Symbol, TradeSignal
+from src.services.auto_sell import AutoSellService
 
 # Configure logging
 logging.basicConfig(
@@ -48,6 +48,10 @@ def run_scan():
         # Note: This is a heavy operation.
         logger.info("Initializing High Cap Stock Sync...")
         symbol_service.sync_high_cap_stocks()
+        
+        # Run auto-sell checks for existing trades
+        auto_sell_service = AutoSellService()
+        auto_sell_service.check_and_execute_auto_sells()
         
         # Get active symbols
         symbols = db.query(Symbol).filter(Symbol.is_active == True).all()

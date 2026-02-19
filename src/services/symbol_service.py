@@ -128,47 +128,47 @@ class SymbolService:
         # Technology companies
         if any(term in sector_lower for term in ['technology', 'software', 'internet']) or \
            any(term in industry_lower for term in ['software', 'internet', 'technology', 'computer', 'semiconductor']):
-            return "🖥️ Technology"
+            return "Technology"
         
         # Healthcare/Medical
         elif any(term in sector_lower for term in ['healthcare', 'medical', 'pharmaceutical']) or \
              any(term in industry_lower for term in ['pharmaceutical', 'medical', 'healthcare', 'biotechnology', 'drug']):
-            return "🏥 Healthcare"
+            return "Healthcare"
         
         # Financial Services
         elif any(term in sector_lower for term in ['financial', 'bank']) or \
              any(term in industry_lower for term in ['bank', 'financial', 'insurance', 'credit']):
-            return "🏦 Financial"
+            return "Financial"
         
         # Energy
         elif any(term in sector_lower for term in ['energy', 'oil', 'gas']) or \
              any(term in industry_lower for term in ['oil', 'gas', 'energy', 'petroleum', 'coal']):
-            return "⚡ Energy"
+            return "Energy"
         
         # Manufacturing/Industrial
         elif any(term in sector_lower for term in ['industrial', 'manufacturing']) or \
              any(term in industry_lower for term in ['manufacturing', 'industrial', 'machinery', 'equipment', 'steel', 'metal']):
-            return "🏭 Industrial"
+            return "Industrial"
         
         # Consumer goods
         elif any(term in sector_lower for term in ['consumer', 'retail']) or \
              any(term in industry_lower for term in ['consumer', 'retail', 'food', 'beverage', 'apparel']):
-            return "🛒 Consumer"
+            return "Consumer"
         
         # Real Estate
         elif any(term in sector_lower for term in ['real estate', 'property']) or \
              any(term in industry_lower for term in ['real estate', 'property', 'construction']):
-            return "🏢 Real Estate"
+            return "Real Estate"
         
         # Utilities
         elif any(term in sector_lower for term in ['utilities', 'utility']) or \
              any(term in industry_lower for term in ['utilities', 'electric', 'water', 'power']):
-            return "🔌 Utilities"
+            return "Utilities"
         
         # Telecommunications
         elif any(term in sector_lower for term in ['communication', 'telecom']) or \
              any(term in industry_lower for term in ['telecom', 'communication', 'wireless']):
-            return "📡 Telecom"
+            return "Telecom"
         
         else:
-            return f"📊 {sector}" if sector else "🏢 Other"
+            return f"{sector}" if sector else "Other"

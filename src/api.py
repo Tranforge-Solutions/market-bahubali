@@ -30,6 +30,13 @@ job_status = {
     "message": "No jobs run yet"
 }
 
+def get_db():
+    db = db_instance.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 app = FastAPI(
     title="Market Monitor Trading API",
     description="REST API for paper trading system with portfolio management and authentication",
@@ -185,13 +192,6 @@ class PortfolioResponse(BaseModel):
     win_rate: float = Field(..., description="Win rate percentage")
     avg_pnl: float = Field(..., description="Average P&L per trade")
     open_positions: int = Field(..., description="Number of currently open trades")
-
-def get_db():
-    db = db_instance.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def create_access_token(data: dict):
     to_encode = data.copy()

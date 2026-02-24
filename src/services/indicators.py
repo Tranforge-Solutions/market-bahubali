@@ -44,10 +44,12 @@ class IndicatorService:
         df.set_index('timestamp', inplace=True)
         
         # Debug: Log dataframe size
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Loaded {len(df)} days for {ticker} from database")
+        
         if len(df) < 200:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Loaded only {len(df)} days for {ticker} (expected 200+)")
+            logger.warning(f"⚠️ Insufficient data for {ticker}: {len(df)} days (need 200+)")
         
         return df
 

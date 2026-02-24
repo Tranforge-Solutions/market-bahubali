@@ -86,10 +86,15 @@ def run_scan():
             screening_msg = screener.format_screening_results(screening_results)
             alert_service.send_telegram_message(screening_msg, specific_chat_id=alert_service.buy_channel_id)
 
-        # Get active symbols
-        symbols = db.query(Symbol).filter(Symbol.is_active.is_(True)).all()
+        # Get active symbols with pre-filtering to reduce load
+        from src.services.symbol_filter import SymbolFilterService
+        filter_service = SymbolFilterService(db)
+        
+        # Pre-filter: Only get symbols with sufficient data and recent activity
+        symbols = filter_service.get_filtered_symbols(min_data_days=200)
+        
         if not symbols:
-            logger.warning("No active symbols found after sync. Check market cap threshold or data source.")
+            logger.warning("No symbols passed pre-filtering. Check data availability.")
             return
 
         for symbol in symbols:

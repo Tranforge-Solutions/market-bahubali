@@ -135,9 +135,13 @@ class ScoringService:
         # ---------------------------
         # LONG Logic (Buying the Dip)
         # ---------------------------
-        if rsi < Config.RSI_OVERSOLD_THRESHOLD and rsi_rising:
-            # Trend Damage Check: Price should not be too far below 200 SMA
-            if sma200 > 0:
+        # Check RSI oversold condition (skip if RSI_OVERSOLD_THRESHOLD is NA)
+        rsi_oversold_check = Config.RSI_OVERSOLD_THRESHOLD is None or rsi < Config.RSI_OVERSOLD_THRESHOLD
+        rsi_rising_check = Config.RSI_RISING_CANDLES is None or rsi_rising
+        
+        if rsi_oversold_check and rsi_rising_check:
+            # Trend Damage Check (skip if MAX_DISTANCE_BELOW_SMA200_PERCENT is NA)
+            if Config.MAX_DISTANCE_BELOW_SMA200_PERCENT is not None and sma200 > 0:
                 distance_below_pct = ((sma200 - close) / sma200) * 100
                 if distance_below_pct > Config.MAX_DISTANCE_BELOW_SMA200_PERCENT:
                     long_reasons.append(f"⚠️ Trend Damaged: Price {distance_below_pct:.1f}% below 200 SMA (Max: {Config.MAX_DISTANCE_BELOW_SMA200_PERCENT}%)")
@@ -145,15 +149,24 @@ class ScoringService:
                     pass
                 else:
                     long_score += self.SCORE_RSI_EXTREME
-                    long_reasons.append(f"Oversold & Rising RSI (RSI: {rsi:.1f}, Rising for {Config.RSI_RISING_CANDLES} candles)")
+                    if Config.RSI_OVERSOLD_THRESHOLD is not None:
+                        long_reasons.append(f"Oversold & Rising RSI (RSI: {rsi:.1f}, Rising for {Config.RSI_RISING_CANDLES or 'any'} candles)")
+                    else:
+                        long_reasons.append(f"Rising RSI Momentum (RSI: {rsi:.1f})")
 
-                    # Heikin Ashi Confirmation (Consecutive green candles with increasing close)
-                    if ha_bullish_confirmed:
+                    # Heikin Ashi Confirmation (skip if HA_CONSECUTIVE_CANDLES is NA)
+                    if Config.HA_CONSECUTIVE_CANDLES is None or ha_bullish_confirmed:
                         long_score += self.SCORE_TREND_CONFIRM
-                        long_reasons.append(f"Bullish Momentum Confirmed ({Config.HA_CONSECUTIVE_CANDLES} Green HA Candles, Close Rising)")
+                        if Config.HA_CONSECUTIVE_CANDLES is not None:
+                            long_reasons.append(f"Bullish Momentum Confirmed ({Config.HA_CONSECUTIVE_CANDLES} Green HA Candles, Close Rising)")
+                        else:
+                            long_reasons.append("Bullish Momentum (HA filter skipped)")
 
-                    # Volume Check: Current volume > 1.2x average
-                    if volume_above_avg:
+                    # Volume Check (skip if VOLUME_MULTIPLIER is NA)
+                    if Config.VOLUME_MULTIPLIER is None:
+                        long_score += self.SCORE_VOL_MED
+                        long_reasons.append("Volume filter skipped")
+                    elif volume_above_avg:
                         long_score += self.SCORE_VOL_HIGH
                         long_reasons.append(f"High Volume Conviction (>{Config.VOLUME_MULTIPLIER}x {Config.VOLUME_AVERAGE_PERIOD}-day avg)")
                     elif vol_z > 1.0:
@@ -165,34 +178,56 @@ class ScoringService:
                         long_score += self.SCORE_SMA_FILTER
                         long_reasons.append("Major Uptrend Support (> 200 SMA)")
             else:
-                # No SMA200 data, proceed with caution
+                # No SMA200 data or filter skipped, proceed
                 long_score += self.SCORE_RSI_EXTREME
-                long_reasons.append(f"Oversold & Rising RSI (RSI: {rsi:.1f}, Rising for {Config.RSI_RISING_CANDLES} candles)")
+                if Config.RSI_OVERSOLD_THRESHOLD is not None:
+                    long_reasons.append(f"Oversold & Rising RSI (RSI: {rsi:.1f}, Rising for {Config.RSI_RISING_CANDLES or 'any'} candles)")
+                else:
+                    long_reasons.append(f"Rising RSI Momentum (RSI: {rsi:.1f})")
 
-                # Heikin Ashi Confirmation (Consecutive green candles with increasing close)
-                if ha_bullish_confirmed:
+                # Heikin Ashi Confirmation (skip if HA_CONSECUTIVE_CANDLES is NA)
+                if Config.HA_CONSECUTIVE_CANDLES is None or ha_bullish_confirmed:
                     long_score += self.SCORE_TREND_CONFIRM
-                    long_reasons.append(f"Bullish Momentum Confirmed ({Config.HA_CONSECUTIVE_CANDLES} Green HA Candles, Close Rising)")
+                    if Config.HA_CONSECUTIVE_CANDLES is not None:
+                        long_reasons.append(f"Bullish Momentum Confirmed ({Config.HA_CONSECUTIVE_CANDLES} Green HA Candles, Close Rising)")
+                    else:
+                        long_reasons.append("Bullish Momentum (HA filter skipped)")
 
-                # Volume Check
-                if volume_above_avg:
+                # Volume Check (skip if VOLUME_MULTIPLIER is NA)
+                if Config.VOLUME_MULTIPLIER is None:
+                    long_score += self.SCORE_VOL_MED
+                    long_reasons.append("Volume filter skipped")
+                elif volume_above_avg:
                     long_score += self.SCORE_VOL_HIGH
                     long_reasons.append(f"High Volume Conviction (>{Config.VOLUME_MULTIPLIER}x {Config.VOLUME_AVERAGE_PERIOD}-day avg)")
 
         # ---------------------------
         # SHORT Logic (Selling the Top)
         # ---------------------------
-        if rsi > Config.RSI_OVERBOUGHT_THRESHOLD and rsi_falling:
+        # Check RSI overbought condition (skip if RSI_OVERBOUGHT_THRESHOLD is NA)
+        rsi_overbought_check = Config.RSI_OVERBOUGHT_THRESHOLD is None or rsi > Config.RSI_OVERBOUGHT_THRESHOLD
+        rsi_falling_check = Config.RSI_FALLING_CANDLES is None or rsi_falling
+        
+        if rsi_overbought_check and rsi_falling_check:
             short_score += self.SCORE_RSI_EXTREME
-            short_reasons.append(f"Overbought & Falling RSI (RSI: {rsi:.1f}, Falling for {Config.RSI_FALLING_CANDLES} candles)")
+            if Config.RSI_OVERBOUGHT_THRESHOLD is not None:
+                short_reasons.append(f"Overbought & Falling RSI (RSI: {rsi:.1f}, Falling for {Config.RSI_FALLING_CANDLES or 'any'} candles)")
+            else:
+                short_reasons.append(f"Falling RSI Momentum (RSI: {rsi:.1f})")
 
-            # Heikin Ashi Confirmation (Consecutive red candles with decreasing close)
-            if ha_bearish_confirmed:
+            # Heikin Ashi Confirmation (skip if HA_CONSECUTIVE_CANDLES is NA)
+            if Config.HA_CONSECUTIVE_CANDLES is None or ha_bearish_confirmed:
                 short_score += self.SCORE_TREND_CONFIRM
-                short_reasons.append(f"Bearish Momentum Confirmed ({Config.HA_CONSECUTIVE_CANDLES} Red HA Candles, Close Falling)")
+                if Config.HA_CONSECUTIVE_CANDLES is not None:
+                    short_reasons.append(f"Bearish Momentum Confirmed ({Config.HA_CONSECUTIVE_CANDLES} Red HA Candles, Close Falling)")
+                else:
+                    short_reasons.append("Bearish Momentum (HA filter skipped)")
 
-            # Volume Check: Current volume > 1.2x average
-            if volume_above_avg:
+            # Volume Check (skip if VOLUME_MULTIPLIER is NA)
+            if Config.VOLUME_MULTIPLIER is None:
+                short_score += self.SCORE_VOL_MED
+                short_reasons.append("Volume filter skipped")
+            elif volume_above_avg:
                 short_score += self.SCORE_VOL_HIGH
                 short_reasons.append(f"High Volume Conviction (>{Config.VOLUME_MULTIPLIER}x {Config.VOLUME_AVERAGE_PERIOD}-day avg)")
             elif vol_z > 1.0:

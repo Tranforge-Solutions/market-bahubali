@@ -18,13 +18,20 @@ class SymbolService:
     def sync_high_cap_stocks(self, min_mcap_crore: float = None):
         """
         Fetches Nifty 500 list, checks Market Cap, and activates stocks > min_mcap_crore.
+        If min_mcap_crore is None (NA), all stocks are included.
         """
         from src.config.settings import Config
 
         if min_mcap_crore is None:
             min_mcap_crore = Config.MIN_MARKET_CAP_CRORE
 
-        logger.info(f"Starting High Cap Stock Sync (Min Market Cap: ₹{min_mcap_crore:,.0f} Crore)...")
+        # If still None (set to NA), skip market cap filter
+        skip_mcap_filter = min_mcap_crore is None
+        
+        if skip_mcap_filter:
+            logger.info("Starting Stock Sync (Market Cap filter: DISABLED - All stocks included)...")
+        else:
+            logger.info(f"Starting High Cap Stock Sync (Min Market Cap: ₹{min_mcap_crore:,.0f} Crore)...")
 
         try:
             # 1. Fetch CSV
@@ -69,7 +76,8 @@ class SymbolService:
 
                     mcap_crore = mcap / 10_000_000
 
-                    if mcap_crore > min_mcap_crore:
+                    # Skip market cap check if filter is disabled (NA)
+                    if skip_mcap_filter or mcap_crore > min_mcap_crore:
                         # Get company info
                         company_name = info.get('longName') or info.get('shortName', '')
                         sector = info.get('sector', '')

@@ -41,6 +41,13 @@ class IndicatorService:
 
         df = pd.DataFrame(records)
         df.set_index('timestamp', inplace=True)
+        
+        # Debug: Log dataframe size
+        if len(df) < 200:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Loaded only {len(df)} days for {ticker} (expected 200+)")
+        
         return df
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:

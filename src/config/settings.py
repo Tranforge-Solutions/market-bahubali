@@ -43,12 +43,12 @@ class Config:
 
     # Volume Strategy Parameters (Set to NA to skip filter)
     VOLUME_MULTIPLIER = _get_optional_float.__func__("VOLUME_MULTIPLIER", "1.2")
-    VOLUME_AVERAGE_PERIOD = int(os.getenv("VOLUME_AVERAGE_PERIOD", "20"))
+    VOLUME_AVERAGE_PERIOD = _get_optional_int.__func__("VOLUME_AVERAGE_PERIOD", "20")
 
     # Dual Window Strategy Parameters
     DATA_LOOKBACK_DAYS = int(os.getenv("DATA_LOOKBACK_DAYS", "365"))
-    PRIMARY_WINDOW_CANDLES = int(os.getenv("PRIMARY_WINDOW_CANDLES", "70"))
-    CONFIRMATION_WINDOW_CANDLES = int(os.getenv("CONFIRMATION_WINDOW_CANDLES", "30"))
+    PRIMARY_WINDOW_CANDLES = _get_optional_int.__func__("PRIMARY_WINDOW_CANDLES", "70")
+    CONFIRMATION_WINDOW_CANDLES = _get_optional_int.__func__("CONFIRMATION_WINDOW_CANDLES", "30")
 
     # Market Cap Filter Parameters (Set to NA to skip filter)
     MIN_MARKET_CAP_CRORE = _get_optional_float.__func__("MIN_MARKET_CAP_CRORE", "10000")

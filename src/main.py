@@ -13,6 +13,8 @@ from src.services.scoring import ScoringService
 from src.services.alerting import AlertService
 from src.services.plotting import ChartService
 from src.services.symbol_service import SymbolService
+from src.services.optimized_symbol_service import OptimizedSymbolService
+from src.services.ultra_optimized_symbol_service import UltraOptimizedSymbolService
 from src.services.auto_sell import AutoSellService
 from src.models.models import Symbol, TradeSignal
 
@@ -56,10 +58,13 @@ def run_scan():
         )
         alert_service.send_telegram_message(start_msg, specific_chat_id=alert_service.buy_channel_id)
 
-        # Sync Nifty 500 High Cap Stocks (> 10,000 Cr)
-        # Note: This is a heavy operation.
-        logger.info("Initializing High Cap Stock Sync...")
-        symbol_service.sync_high_cap_stocks()
+        # Sync Nifty 500 High Cap Stocks - Use multithreaded sync with daily caching
+        logger.info("Checking if stock sync is needed...")
+        optimized_service = OptimizedSymbolService(db)
+        if optimized_service.should_sync():
+            optimized_service.sync_high_cap_stocks_optimized(max_workers=20)
+        else:
+            logger.info("⏭️ Skipping sync - last sync was less than 24 hours ago")
 
         # Run auto-sell checks for existing trades
         auto_sell_service = AutoSellService()
@@ -89,6 +94,11 @@ def run_scan():
                 # 2. Analyze
                 df = indicator_service.load_data(symbol.ticker)
                 if df.empty:
+                    continue
+                
+                # Check if we have enough data for analysis (need at least 200 days for SMA200)
+                if len(df) < 200:
+                    logger.warning(f"Insufficient data for {symbol.ticker}: {len(df)} days (need 200+)")
                     continue
 
                 df = indicator_service.calculate_indicators(df)

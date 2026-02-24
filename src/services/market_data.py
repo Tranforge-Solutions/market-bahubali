@@ -33,29 +33,36 @@ class MarketDataService:
         is_delta = False
 
         if last_record:
-            # We have data
+            # We have data - check if we need to fetch more
             last_date = last_record.timestamp
             today = datetime.now().date()
-
-            # If last record is from today, it might be incomplete/stale.
-            # We should delete it and re-fetch to get the latest close/volume.
-            if last_date.date() == today:
-                logger.info(f"Existing data for today ({today}) found. Removing to refresh...")
+            
+            # Count total records for this symbol
+            total_records = self.db.query(OHLCV).filter(OHLCV.symbol_id == symbol.id).count()
+            
+            # If we have less than 200 days of data, fetch full history
+            if total_records < 200:
+                logger.info(f"{ticker} has only {total_records} days. Fetching full history...")
+                is_delta = False
+            # If last record is from today AND we have enough history, just update today
+            elif last_date.date() == today and total_records >= 200:
+                logger.info(f"Updating today's data for {ticker} ({total_records} days in DB)...")
                 self.db.delete(last_record)
                 self.db.commit()
-                # Set start_date to today to re-fetch
                 start_date = last_date
-            else:
-                # Last record is from the past. Fetch from next day.
+                is_delta = True
+            # If last record is from the past, fetch from next day
+            elif last_date.date() < today:
                 start_date = last_date + timedelta(days=1)
-
-                # Check if we are already up to date (Start Date > Today)
-                if start_date.date() > today:
-                    logger.info(f"{ticker} is already up to date (Last: {last_date.date()})")
-                    return
-
-            is_delta = True
-            logger.info(f"Fetching data for {ticker} from {start_date.date()}...")
+                is_delta = True
+                logger.info(f"Fetching delta data for {ticker} from {start_date.date()}...")
+            else:
+                # Already up to date
+                logger.info(f"{ticker} is already up to date (Last: {last_date.date()})")
+                return
+        else:
+            # No data exists - fetch full history
+            logger.info(f"No existing data for {ticker}. Fetching full {period} history...")
 
         # 2. Fetch Data
         try:
@@ -70,18 +77,24 @@ class MarketDataService:
                 logger.warning(f"No new data found for {ticker}")
                 return
 
+            # Optimization: Get all existing timestamps for this symbol at once
+            existing_timestamps = set(
+                ts[0] for ts in self.db.query(OHLCV.timestamp)
+                .filter(OHLCV.symbol_id == symbol.id)
+                .all()
+            )
+
             new_records = 0
             for index, row in df.iterrows():
                 # index is Timestamp
                 ts = index.to_pydatetime()
 
-                # Double check existence (optimization: could skip this if confident in delta logic)
-                exists = self.db.query(OHLCV).filter(
-                    OHLCV.symbol_id == symbol.id,
-                    OHLCV.timestamp == ts
-                ).first()
+                # Check if timestamp already exists (fast set lookup)
+                if ts in existing_timestamps:
+                    continue
 
-                if not exists:
+                # Store new record
+                try:
                     ohlcv = OHLCV(
                         symbol_id=symbol.id,
                         timestamp=ts,
@@ -93,6 +106,9 @@ class MarketDataService:
                     )
                     self.db.add(ohlcv)
                     new_records += 1
+                except Exception as e:
+                    logger.error(f"Error storing record for {ticker} at {ts}: {e}")
+                    continue
 
             self.db.commit()
             if new_records > 0:

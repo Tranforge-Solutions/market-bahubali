@@ -90,6 +90,7 @@ class SymbolService:
                                 name=company_name,
                                 sector=sector,
                                 industry=industry,
+                                market_cap_cr=mcap_crore,
                                 is_active=True
                             )
                             self.db.add(new_sym)
@@ -99,6 +100,7 @@ class SymbolService:
                             existing.name = company_name
                             existing.sector = sector
                             existing.industry = industry
+                            existing.market_cap_cr = mcap_crore
                             logger.info(f"🔄 Reactivated {ticker} - {company_name} (Mcap: {mcap_crore:.2f} Cr)")
 
                         count_added += 1

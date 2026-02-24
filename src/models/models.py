@@ -12,6 +12,7 @@ class Symbol(Base):
     name = Column(String, nullable=True)
     sector = Column(String, nullable=True)
     industry = Column(String, nullable=True)
+    market_cap_cr = Column(Float, nullable=True)  # Market cap in crores
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -45,15 +45,16 @@ class ScoringService:
 
         # Calculate volume average if df is provided
         volume_above_avg = False
-        if df is not None and len(df) >= Config.VOLUME_AVERAGE_PERIOD:
-            current_idx = df.index.get_loc(row.name)
-            if current_idx >= Config.VOLUME_AVERAGE_PERIOD:
-                avg_volume = df['volume'].iloc[current_idx - Config.VOLUME_AVERAGE_PERIOD:current_idx].mean()
-                if avg_volume > 0:
-                    volume_above_avg = current_volume > (Config.VOLUME_MULTIPLIER * avg_volume)
+        if Config.VOLUME_MULTIPLIER is not None and Config.VOLUME_AVERAGE_PERIOD is not None:
+            if df is not None and len(df) >= Config.VOLUME_AVERAGE_PERIOD:
+                current_idx = df.index.get_loc(row.name)
+                if current_idx >= Config.VOLUME_AVERAGE_PERIOD:
+                    avg_volume = df['volume'].iloc[current_idx - Config.VOLUME_AVERAGE_PERIOD:current_idx].mean()
+                    if avg_volume > 0:
+                        volume_above_avg = current_volume > (Config.VOLUME_MULTIPLIER * avg_volume)
 
         # Use dual window approach
-        if df is not None and len(df) >= Config.PRIMARY_WINDOW_CANDLES:
+        if Config.PRIMARY_WINDOW_CANDLES is not None and df is not None and len(df) >= Config.PRIMARY_WINDOW_CANDLES:
             # Get primary window (last 70 candles) and confirmation window (last 30 candles)
             current_idx = df.index.get_loc(row.name)
 
@@ -73,7 +74,7 @@ class ScoringService:
         ha_bullish_confirmed = False
         ha_bearish_confirmed = False
 
-        if df is not None and len(df) >= Config.PRIMARY_WINDOW_CANDLES:
+        if Config.PRIMARY_WINDOW_CANDLES is not None and df is not None and len(df) >= Config.PRIMARY_WINDOW_CANDLES:
             # Get primary window (last 70 candles) and confirmation window (last 30 candles)
             current_idx = df.index.get_loc(row.name)
 
@@ -86,13 +87,13 @@ class ScoringService:
             confirmation_df = df.iloc[confirmation_start:current_idx + 1]
 
             # Check RSI trend in confirmation window
-            if len(confirmation_df) >= Config.RSI_RISING_CANDLES:
+            if Config.RSI_RISING_CANDLES is not None and Config.CONFIRMATION_WINDOW_CANDLES is not None and len(confirmation_df) >= Config.RSI_RISING_CANDLES:
                 rsi_values = confirmation_df['RSI'].tail(Config.RSI_RISING_CANDLES + 1).values
                 rsi_rising = all(rsi_values[i] < rsi_values[i+1] for i in range(len(rsi_values)-1))
                 rsi_falling = all(rsi_values[i] > rsi_values[i+1] for i in range(len(rsi_values)-1))
 
             # Check HA consecutive candles in confirmation window
-            if len(confirmation_df) >= Config.HA_CONSECUTIVE_CANDLES:
+            if Config.HA_CONSECUTIVE_CANDLES is not None and Config.CONFIRMATION_WINDOW_CANDLES is not None and len(confirmation_df) >= Config.HA_CONSECUTIVE_CANDLES:
                 ha_green_values = confirmation_df['HA_Green'].tail(Config.HA_CONSECUTIVE_CANDLES).values
                 ha_close_values = confirmation_df['HA_Close'].tail(Config.HA_CONSECUTIVE_CANDLES).values
 
@@ -101,36 +102,33 @@ class ScoringService:
                     ha_bearish_confirmed = all(~ha_green_values) and ha_close_values[-1] < ha_close_values[-2]
         else:
             # Fallback to old logic if not enough data
-            if df is not None and len(df) >= max(Config.RSI_RISING_CANDLES, Config.HA_CONSECUTIVE_CANDLES):
-                current_idx = df.index.get_loc(row.name)
+            if Config.RSI_RISING_CANDLES is not None and Config.HA_CONSECUTIVE_CANDLES is not None:
+                if df is not None and len(df) >= max(Config.RSI_RISING_CANDLES, Config.HA_CONSECUTIVE_CANDLES):
+                    current_idx = df.index.get_loc(row.name)
 
-            # Fallback to old logic if not enough data
-            if df is not None and len(df) >= max(Config.RSI_RISING_CANDLES, Config.HA_CONSECUTIVE_CANDLES):
-                current_idx = df.index.get_loc(row.name)
+                    # Check if we have enough previous candles
+                    if current_idx >= Config.RSI_RISING_CANDLES:
+                        # Get RSI values for last N candles including current
+                        rsi_values = df['RSI'].iloc[current_idx - Config.RSI_RISING_CANDLES:current_idx + 1].values
 
-                # Check if we have enough previous candles
-                if current_idx >= Config.RSI_RISING_CANDLES:
-                    # Get RSI values for last N candles including current
-                    rsi_values = df['RSI'].iloc[current_idx - Config.RSI_RISING_CANDLES:current_idx + 1].values
+                        # Check if RSI is consistently rising
+                        rsi_rising = all(rsi_values[i] < rsi_values[i+1] for i in range(len(rsi_values)-1))
 
-                    # Check if RSI is consistently rising
-                    rsi_rising = all(rsi_values[i] < rsi_values[i+1] for i in range(len(rsi_values)-1))
+                        # Check if RSI is consistently falling
+                        rsi_falling = all(rsi_values[i] > rsi_values[i+1] for i in range(len(rsi_values)-1))
 
-                    # Check if RSI is consistently falling
-                    rsi_falling = all(rsi_values[i] > rsi_values[i+1] for i in range(len(rsi_values)-1))
+                    # Check HA consecutive candles
+                    if current_idx >= Config.HA_CONSECUTIVE_CANDLES:
+                        # Get last N HA candles including current
+                        ha_green_values = df['HA_Green'].iloc[current_idx - Config.HA_CONSECUTIVE_CANDLES + 1:current_idx + 1].values
+                        ha_close_values = df['HA_Close'].iloc[current_idx - Config.HA_CONSECUTIVE_CANDLES + 1:current_idx + 1].values
 
-                # Check HA consecutive candles
-                if current_idx >= Config.HA_CONSECUTIVE_CANDLES:
-                    # Get last N HA candles including current
-                    ha_green_values = df['HA_Green'].iloc[current_idx - Config.HA_CONSECUTIVE_CANDLES + 1:current_idx + 1].values
-                    ha_close_values = df['HA_Close'].iloc[current_idx - Config.HA_CONSECUTIVE_CANDLES + 1:current_idx + 1].values
+                        # Check for consecutive green candles AND current close > previous close
+                        if len(ha_green_values) == Config.HA_CONSECUTIVE_CANDLES:
+                            ha_bullish_confirmed = all(ha_green_values) and ha_close_values[-1] > ha_close_values[-2]
 
-                    # Check for consecutive green candles AND current close > previous close
-                    if len(ha_green_values) == Config.HA_CONSECUTIVE_CANDLES:
-                        ha_bullish_confirmed = all(ha_green_values) and ha_close_values[-1] > ha_close_values[-2]
-
-                        # Check for consecutive red candles AND current close < previous close
-                        ha_bearish_confirmed = all(~ha_green_values) and ha_close_values[-1] < ha_close_values[-2]
+                            # Check for consecutive red candles AND current close < previous close
+                            ha_bearish_confirmed = all(~ha_green_values) and ha_close_values[-1] < ha_close_values[-2]
 
         # ---------------------------
         # LONG Logic (Buying the Dip)

@@ -10,6 +10,7 @@ class IndicatorService:
         """Loads OHLCV data from DB into a Pandas DataFrame."""
         from src.config.settings import Config
         from datetime import datetime, timedelta
+        import pytz
 
         if lookback_days is None:
             lookback_days = Config.DATA_LOOKBACK_DAYS
@@ -18,8 +19,8 @@ class IndicatorService:
         if not symbol:
             return pd.DataFrame()
 
-        # Calculate cutoff date
-        cutoff_date = datetime.now() - timedelta(days=lookback_days)
+        # Calculate cutoff date with UTC timezone to match DB timestamps
+        cutoff_date = datetime.now(pytz.UTC) - timedelta(days=lookback_days)
 
         # Query data with lookback limit
         data = self.db.query(OHLCV).filter(

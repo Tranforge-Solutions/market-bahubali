@@ -2,16 +2,46 @@ name: Scheduled Market Scan
 
 on:
   schedule:
-    # 10:30 AM IST (05:00 UTC) Mon-Fri
-    - cron: '0 5 * * 1-5'
-    # 2:45 PM IST (08:15 UTC) Mon-Fri
-    - cron: '15 8 * * 1-5'
+    # Sync symbols: 9:30 AM IST (4:00 AM UTC) Mon-Fri
+    - cron: '0 4 * * 1-5'
+    # Market scan: 10:00 AM IST (4:30 AM UTC) Mon-Fri
+    - cron: '30 4 * * 1-5'
+    # Sync symbols: 2:30 PM IST (9:00 AM UTC) Mon-Fri
+    - cron: '0 9 * * 1-5'
+    # Market scan: 3:00 PM IST (9:30 AM UTC) Mon-Fri
+    - cron: '30 9 * * 1-5'
   workflow_dispatch:
 
 jobs:
-  run-market-scan:
+  determine-job:
+    runs-on: ubuntu-latest
+    outputs:
+      job_type: ${{ steps.check.outputs.job_type }}
+    steps:
+      - name: Check job type
+        id: check
+        run: |
+          MINUTE=$(date -u +%M)
+          if [[ "$MINUTE" == "00" ]]; then
+            echo "job_type=sync" >> $GITHUB_OUTPUT
+          else
+            echo "job_type=scan" >> $GITHUB_OUTPUT
+          fi
+
+  sync-symbols:
+    needs: determine-job
+    if: needs.determine-job.outputs.job_type == 'sync'
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render API
+      - name: Trigger Symbol Sync
+        run: |
+          curl -X POST https://market-monitor-api.onrender.com/sync-symbols
+
+  market-scan:
+    needs: determine-job
+    if: needs.determine-job.outputs.job_type == 'scan'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Market Scan
         run: |
           curl -X POST https://market-monitor-api.onrender.com/run-job

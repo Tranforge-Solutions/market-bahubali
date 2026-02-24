@@ -55,8 +55,14 @@ class IndicatorService:
 
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Applies TA indicators to the DataFrame using standard Pandas."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         if df.empty:
             return df
+        
+        initial_len = len(df)
+        logger.info(f"Calculating indicators for {initial_len} rows")
 
         # Helper for SMA
         def calculate_sma(series, window):
@@ -121,4 +127,8 @@ class IndicatorService:
         df['Vol_Z'] = (df['volume'] - df['Vol_Mean']) / df['Vol_Std']
 
         # Fill NaN for initial periods if needed, or leave as is (Scoring handles NaNs implicitly by false conditions)
+        
+        final_len = len(df)
+        logger.info(f"Indicators calculated: {initial_len} -> {final_len} rows")
+        
         return df

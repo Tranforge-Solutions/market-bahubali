@@ -97,14 +97,20 @@ class ScoringService:
                 ha_green_values = confirmation_df['HA_Green'].tail(Config.HA_CONSECUTIVE_CANDLES).values
                 ha_close_values = confirmation_df['HA_Close'].tail(Config.HA_CONSECUTIVE_CANDLES).values
 
-                if len(ha_green_values) == Config.HA_CONSECUTIVE_CANDLES:
+                if len(ha_green_values) >= Config.HA_CONSECUTIVE_CANDLES and len(ha_close_values) >= Config.HA_CONSECUTIVE_CANDLES and Config.HA_CONSECUTIVE_CANDLES >= 2:
                     ha_bullish_confirmed = all(ha_green_values) and ha_close_values[-1] > ha_close_values[-2]
                     ha_bearish_confirmed = all(~ha_green_values) and ha_close_values[-1] < ha_close_values[-2]
         else:
             # Fallback to old logic if not enough data
             if Config.RSI_RISING_CANDLES is not None and Config.HA_CONSECUTIVE_CANDLES is not None:
                 if df is not None and len(df) >= max(Config.RSI_RISING_CANDLES, Config.HA_CONSECUTIVE_CANDLES):
-                    current_idx = df.index.get_loc(row.name)
+                    try:
+                        current_idx = df.index.get_loc(row.name)
+                        # Handle case where get_loc returns a slice
+                        if isinstance(current_idx, slice):
+                            current_idx = current_idx.start
+                    except:
+                        current_idx = len(df) - 1
 
                     # Check if we have enough previous candles
                     if current_idx >= Config.RSI_RISING_CANDLES:
@@ -123,12 +129,15 @@ class ScoringService:
                         ha_green_values = df['HA_Green'].iloc[current_idx - Config.HA_CONSECUTIVE_CANDLES + 1:current_idx + 1].values
                         ha_close_values = df['HA_Close'].iloc[current_idx - Config.HA_CONSECUTIVE_CANDLES + 1:current_idx + 1].values
 
-                        # Check for consecutive green candles AND current close > previous close
-                        if len(ha_green_values) == Config.HA_CONSECUTIVE_CANDLES:
-                            ha_bullish_confirmed = all(ha_green_values) and ha_close_values[-1] > ha_close_values[-2]
-
-                            # Check for consecutive red candles AND current close < previous close
-                            ha_bearish_confirmed = all(~ha_green_values) and ha_close_values[-1] < ha_close_values[-2]
+                        # Check for consecutive green/red candles
+                        if len(ha_green_values) >= Config.HA_CONSECUTIVE_CANDLES and len(ha_close_values) >= Config.HA_CONSECUTIVE_CANDLES:
+                            if Config.HA_CONSECUTIVE_CANDLES >= 2:
+                                ha_bullish_confirmed = all(ha_green_values) and ha_close_values[-1] > ha_close_values[-2]
+                                ha_bearish_confirmed = all(~ha_green_values) and ha_close_values[-1] < ha_close_values[-2]
+                            else:
+                                # For HA_CONSECUTIVE_CANDLES = 1, just check current candle color
+                                ha_bullish_confirmed = ha_green_values[-1]
+                                ha_bearish_confirmed = not ha_green_values[-1]
 
         # ---------------------------
         # LONG Logic (Buying the Dip)

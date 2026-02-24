@@ -58,13 +58,19 @@ def run_scan():
         )
         alert_service.send_telegram_message(start_msg, specific_chat_id=alert_service.buy_channel_id)
 
-        # Sync Nifty 500 High Cap Stocks - Use multithreaded sync with daily caching
-        logger.info("Checking if stock sync is needed...")
-        optimized_service = OptimizedSymbolService(db)
-        if optimized_service.should_sync():
-            optimized_service.sync_high_cap_stocks_optimized(max_workers=20)
+        # Sync Nifty 500 High Cap Stocks - Skip on production to avoid timeout
+        # Run sync manually or via separate job
+        skip_sync = os.getenv('SKIP_SYMBOL_SYNC', 'false').lower() == 'true'
+        
+        if not skip_sync:
+            logger.info("Checking if stock sync is needed...")
+            optimized_service = OptimizedSymbolService(db)
+            if optimized_service.should_sync():
+                optimized_service.sync_high_cap_stocks_optimized(max_workers=20)
+            else:
+                logger.info("⏭️ Skipping sync - last sync was less than 24 hours ago")
         else:
-            logger.info("⏭️ Skipping sync - last sync was less than 24 hours ago")
+            logger.info("⏭️ Symbol sync disabled via SKIP_SYMBOL_SYNC env variable")
 
         # Run auto-sell checks for existing trades
         auto_sell_service = AutoSellService()

@@ -70,6 +70,29 @@ async def get_status():
     }
 
 
+@app.post("/sync-symbols", summary="Sync Stock Symbols", description="Manually trigger symbol sync (run once to populate database)")
+async def sync_symbols(background_tasks: BackgroundTasks, force: bool = False):
+    """Manually trigger symbol sync"""
+    def sync_task():
+        try:
+            from src.services.optimized_symbol_service import OptimizedSymbolService
+            db = db_instance.SessionLocal()
+            try:
+                optimized_service = OptimizedSymbolService(db)
+                if force or optimized_service.should_sync():
+                    logger.info("Starting manual symbol sync...")
+                    optimized_service.sync_high_cap_stocks_optimized(max_workers=20)
+                    logger.info("Symbol sync completed")
+                else:
+                    logger.info("Sync not needed - last sync was recent")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Symbol sync failed: {e}")
+    
+    background_tasks.add_task(sync_task)
+    return {"status": "success", "message": "Symbol sync started in background"}
+
 @app.post("/run-job", summary="Trigger Market Scan", description="Manually trigger market scan job")
 async def run_job(background_tasks: BackgroundTasks):
     """Trigger market scan job"""

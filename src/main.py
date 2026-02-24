@@ -397,7 +397,7 @@ def run_scan():
             )
 
             logger.info("No signals found. Sending summary message.")
-            alert_service.send_telegram_message(no_signal_msg)
+            alert_service.send_telegram_message(no_signal_msg, specific_chat_id=alert_service.buy_channel_id)
         else:
             logger.info(f"Scan completed. Found {signals_found} signals.")
 

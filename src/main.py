@@ -97,30 +97,43 @@ def run_scan():
             logger.warning("No symbols passed pre-filtering. Check data availability.")
             return
 
-        for symbol in symbols:
+        # Process symbols in parallel using ThreadPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        max_workers = int(os.getenv('SCAN_WORKERS', '5'))  # Default 5 threads for free tier
+        
+        logger.info(f"Processing {len(symbols)} symbols with {max_workers} workers...")
+        
+        def process_symbol(symbol):
+            """Process a single symbol - thread-safe function"""
+            # Create new DB session for this thread
+            thread_db = db_instance.SessionLocal()
             try:
+                # Initialize services for this thread
+                thread_market_data = MarketDataService(thread_db)
+                thread_indicator = IndicatorService(thread_db)
+                thread_scoring = ScoringService()
+                
                 # 1. Update Data
-                market_data_service.fetch_and_store(symbol.ticker)
+                thread_market_data.fetch_and_store(symbol.ticker)
 
                 # 2. Analyze
-                df = indicator_service.load_data(symbol.ticker)
+                df = thread_indicator.load_data(symbol.ticker)
                 if df.empty:
-                    continue
+                    return None
                 
-                # Check if we have enough data for analysis (need at least 200 days for SMA200)
                 if len(df) < 200:
-                    logger.warning(f"Insufficient data for {symbol.ticker}: {len(df)} days (need 200+)")
-                    continue
+                    logger.warning(f"Insufficient data for {symbol.ticker}: {len(df)} days")
+                    return None
 
-                df = indicator_service.calculate_indicators(df)
+                df = thread_indicator.calculate_indicators(df)
 
-                # 3. Score (Latest Candle)
+                # 3. Score
                 latest_row = df.iloc[-1]
-                result = scoring_service.score_signal(latest_row, df)
+                result = thread_scoring.score_signal(latest_row, df)
 
                 logger.info(f"Analysis for {symbol.ticker}: Score={result['score']} ({result['confidence']})")
 
-                # 4. Save Signal - Convert numpy types to Python native types
+                # 4. Save Signal
                 signal = TradeSignal(
                     symbol_id=symbol.id,
                     rsi=float(latest_row['RSI']),
@@ -129,32 +142,44 @@ def run_scan():
                     confidence=result['confidence'],
                     direction=result['direction']
                 )
-                try:
-                    db.add(signal)
-                    db.commit()
-                except Exception as db_error:
-                    logger.error(f"Database error for {symbol.ticker}: {db_error}")
-                    db.rollback()
-                    continue
-
-                # Track signals for summary
+                thread_db.add(signal)
+                thread_db.commit()
+                
+                # Return data for alert if qualified
                 if result['confidence'] in ["High", "Medium", "Low"]:
+                    return (symbol, latest_row, result, df, signal)
+                return None
+                
+            except Exception as e:
+                logger.error(f"Error analyzing {symbol.ticker}: {e}")
+                thread_db.rollback()
+                return None
+            finally:
+                thread_db.close()
+        
+        # Execute in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_symbol, sym): sym for sym in symbols}
+            
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
                     signals_found += 1
-
-                # 5. Alert
-                if result['confidence'] in ["High", "Medium", "Low"]:
+                    symbol, latest_row, score_result, df, signal = result
+                    
+                    # 5. Send Alert (in main thread to avoid conflicts)
                     # Get company info
                     company_name = symbol.name or "N/A"
                     company_type = symbol_service.get_company_type(symbol.sector or "", symbol.industry or "")
 
                     # Construct formatted message
                     ticker = symbol.ticker
-                    score = result['score']
-                    conf = result['confidence']
+                    score = score_result['score']
+                    conf = score_result['confidence']
                     price = latest_row['close']
-                    direction = result['direction']
+                    direction = score_result['direction']
                     # Escape reasons to avoid HTML parsing errors (e.g. < 30)
-                    reasons_str = "\n".join([f"• {html.escape(r)}" for r in result['reasons']])
+                    reasons_str = "\n".join([f"• {html.escape(r)}" for r in score_result['reasons']])
 
                     # Emoji Map
                     icon = "🟢" if direction == "LONG" else "🔴"
@@ -175,7 +200,7 @@ def run_scan():
                         strategy_parts.append("<b>📈 RSI Oversold Mean-Reversion Setup</b>")
                         
                         # Check what conditions were actually met from the reasons
-                        reasons_text = " ".join(result['reasons'])
+                        reasons_text = " ".join(score_result['reasons'])
                         
                         if "Oversold & Rising RSI" in reasons_text:
                             strategy_parts.append("• RSI(14) deeply oversold and turning upward")
@@ -196,7 +221,7 @@ def run_scan():
                     else:
                         strategy_parts.append("<b>📉 RSI Overbought Reversal Setup</b>")
                         
-                        reasons_text = " ".join(result['reasons'])
+                        reasons_text = " ".join(score_result['reasons'])
                         
                         if "Overbought & Falling RSI" in reasons_text:
                             strategy_parts.append("• RSI(14) overbought and turning downward")
@@ -380,10 +405,6 @@ def run_scan():
                     else:
                         logger.info(f"Chart generation failed. Sending text only:\n{msg}")
                         alert_service.send_telegram_message(msg, specific_chat_id=campaign_channel_id)
-
-            except Exception as e:
-                logger.error(f"Error analyzing {symbol.ticker}: {e}")
-                continue
 
         # Send summary message if no signals found
         if signals_found == 0:

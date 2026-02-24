@@ -39,7 +39,19 @@ class SymbolFilterService:
             )
         ).all()
         
-        logger.info(f"Pre-filtered: {len(filtered_symbols)} symbols meet basic criteria (>={min_data_days} days data, updated in last 7 days)")
+        # Debug: Check if specific symbol was filtered out
+        all_active = self.db.query(Symbol).filter(Symbol.is_active == True).count()
+        logger.info(f"Pre-filtered: {len(filtered_symbols)}/{all_active} symbols meet criteria (>={min_data_days} days data, updated in last 7 days)")
+        
+        # Check KANSAINER.NS specifically
+        kansainer = self.db.query(Symbol).filter(Symbol.ticker == 'KANSAINER.NS').first()
+        if kansainer:
+            kans_data = self.db.query(
+                func.count(OHLCV.id).label('count'),
+                func.max(OHLCV.timestamp).label('last_update')
+            ).filter(OHLCV.symbol_id == kansainer.id).first()
+            logger.info(f"KANSAINER.NS: {kans_data.count} days, last update: {kans_data.last_update}")
+        
         return filtered_symbols
     
     def get_symbols_by_recent_rsi(self, rsi_min: float = None, rsi_max: float = None):
